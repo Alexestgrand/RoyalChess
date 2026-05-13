@@ -4,6 +4,20 @@ import { notFound, redirect } from "next/navigation";
 import type { ReactElement } from "react";
 import { formatEndReason } from "@/lib/game-end-reason-labels";
 import { EmptyChessBoard } from "@/components/shared/empty-chess-board";
+import { UserAvatar } from "@/components/shared/user-avatar";
+import {
+  ProfileEloPanel,
+  type ChartTimeControl,
+  type EloHistoryPoint,
+} from "@/components/profile/profile-elo-panel";
+
+// ─── Constantes ──────────────────────────────────────────────────────────────
+
+const CHART_TCS = ["BULLET", "BLITZ", "RAPID", "CLASSICAL"] as const;
+/** Limite max validée côté API (Zod : 1..50, défaut 30). On prend la borne haute
+ * pour disposer de suffisamment de points pour la variation 30j et le graphe. */
+const ELO_HISTORY_LIMIT = 50;
+const DEFAULT_CHART_TC: ChartTimeControl = "RAPID";
 
 // ─── Labels ──────────────────────────────────────────────────────────────────
 
@@ -93,10 +107,78 @@ async function fetchGameHistory(username: string, page: number): Promise<Paginat
   }
 }
 
+/**
+ * Récupère l'historique des points ELO pour un contrôle de temps donné.
+ *
+ * Le payload API est enveloppé : `{ points: [...] }`. On déplie ici pour que
+ * `ProfileEloPanel` reçoive directement le tableau attendu. En cas d'erreur ou
+ * de payload inattendu, on retombe sur un tableau vide : le panel et le graphe
+ * affichent alors leur empty state dédié plutôt que de planter la page.
+ */
+async function fetchEloHistory(
+  username: string,
+  tc: ChartTimeControl,
+): Promise<readonly EloHistoryPoint[]> {
+  const encoded = encodeURIComponent(username);
+  const qs = new URLSearchParams({ timeControl: tc, limit: String(ELO_HISTORY_LIMIT) });
+  try {
+    const res = await fetch(`${apiBase()}/users/${encoded}/elo-history?${qs.toString()}`, {
+      next: { revalidate: 30 },
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { points?: readonly EloHistoryPoint[] };
+    return Array.isArray(data.points) ? data.points : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeChartTc(raw: string | undefined): ChartTimeControl {
+  return (CHART_TCS as readonly string[]).includes(raw ?? "")
+    ? (raw as ChartTimeControl)
+    : DEFAULT_CHART_TC;
+}
+
+/**
+ * Construit le href de la page profil en préservant le contrôle de temps actif
+ * du graphe : sans ça, paginer remettrait `chartTc` au défaut et casserait la
+ * cohérence avec les liens internes du `ProfileEloPanel`.
+ */
+function buildProfileHref(username: string, page: number, chartTc: ChartTimeControl): string {
+  const sp = new URLSearchParams();
+  if (page > 1) {
+    sp.set("page", String(page));
+  }
+  if (chartTc !== DEFAULT_CHART_TC) {
+    sp.set("chartTc", chartTc);
+  }
+  const qs = sp.toString();
+  const base = `/profile/${encodeURIComponent(username)}`;
+  return qs.length > 0 ? `${base}?${qs}` : base;
+}
+
 function formatTimeControl(tc: string, initialTime: number, increment: number): string {
   const label = TC_LABELS[tc] ?? tc;
   const minutes = Math.floor(initialTime / 60);
   return `${label} ${minutes}+${increment}`;
+}
+
+/**
+ * Formate la date d'inscription en mois + année français ("mai 2026").
+ * Préfère le format long mois+année pour signaler une donnée stable (pas un
+ * timestamp précis qui changerait à chaque rafraîchissement) tout en restant
+ * lisible.
+ */
+function formatMemberSince(dateStr: string | null | undefined): string {
+  if (!dateStr) {
+    return "—";
+  }
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+  return new Intl.DateTimeFormat("fr-FR", { year: "numeric", month: "long" }).format(date);
 }
 
 function formatRelativeDate(dateStr: string | null): string {
@@ -211,7 +293,7 @@ export default async function ProfilePage({
   searchParams,
 }: Readonly<{
   params: Promise<{ username: string }>;
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; chartTc?: string }>;
 }>): Promise<ReactElement> {
   const session = await auth();
   if (!session?.user?.id) {
@@ -219,52 +301,76 @@ export default async function ProfilePage({
   }
 
   const { username: raw } = await params;
-  const { page: pageRaw } = await searchParams;
+  const { page: pageRaw, chartTc: chartTcRaw } = await searchParams;
   const username = decodeURIComponent(raw);
   const page = Math.max(1, Number(pageRaw ?? "1"));
+  const chartTc = normalizeChartTc(chartTcRaw);
   const limit = 20;
 
-  const [profile, history] = await Promise.all([
-    fetchPublicProfile(username),
-    fetchGameHistory(username, page),
-  ]);
+  // Fetch parallèle : profil, historique de parties paginé, et historique ELO
+  // pour chacun des 4 contrôles de temps standards. Chaque fetch ELO échoue
+  // indépendamment (fallback []), de sorte qu'un TC en erreur ne casse ni le
+  // profil ni les autres TC.
+  const [profile, history, bulletPoints, blitzPoints, rapidPoints, classicalPoints] =
+    await Promise.all([
+      fetchPublicProfile(username),
+      fetchGameHistory(username, page),
+      fetchEloHistory(username, "BULLET"),
+      fetchEloHistory(username, "BLITZ"),
+      fetchEloHistory(username, "RAPID"),
+      fetchEloHistory(username, "CLASSICAL"),
+    ]);
 
   if (!profile) {
     notFound();
   }
 
-  const sortedElo = [...profile.eloRatings].sort((a, b) => a.timeControl.localeCompare(b.timeControl));
+  const eloHistoryByTc: Readonly<Record<ChartTimeControl, readonly EloHistoryPoint[]>> = {
+    BULLET: bulletPoints,
+    BLITZ: blitzPoints,
+    RAPID: rapidPoints,
+    CLASSICAL: classicalPoints,
+  };
   const { items } = history;
   const hasPrev = page > 1;
   const hasNext = items.length >= limit;
 
   return (
     <div className="mx-auto max-w-2xl space-y-8 py-4">
-      <div>
-        <h1 className="font-display text-2xl font-semibold text-royal-ivory">Profil</h1>
-        <p className="mt-1 text-sm text-muted-foreground">@{profile.username}</p>
-      </div>
-
-      <section className="rounded-xl border border-royal-surface-elevated bg-royal-surface/80 p-5">
-        <h2 className="mb-3 font-medium text-royal-ivory">Statistiques</h2>
-        <p className="text-sm text-royal-muted">
-          Parties jouées : <span className="font-mono text-royal-ivory">{profile.stats.gamesPlayed}</span>
-        </p>
+      {/* Carte d'identité : avatar + pseudo + date d'inscription + compteur de parties */}
+      <section
+        className="flex flex-wrap items-center gap-5 rounded-xl border border-royal-surface-elevated bg-royal-surface/80 p-5"
+        aria-label="Identité du joueur"
+      >
+        <UserAvatar
+          username={profile.username}
+          src={profile.avatarUrl}
+          className="size-20 border border-royal-surface-elevated"
+        />
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate font-display text-2xl font-semibold text-royal-ivory">
+            {profile.username}
+          </h1>
+          <p className="mt-0.5 truncate text-sm text-muted-foreground">@{profile.username}</p>
+          <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+            <dt className="text-royal-muted">Membre depuis</dt>
+            <dd className="font-medium text-royal-ivory">{formatMemberSince(profile.createdAt)}</dd>
+            <dt className="text-royal-muted">Parties jouées</dt>
+            <dd className="font-mono text-royal-ivory">{profile.stats.gamesPlayed}</dd>
+          </dl>
+        </div>
       </section>
 
-      <section className="rounded-xl border border-royal-surface-elevated bg-royal-surface/80 p-5">
-        <h2 className="mb-4 font-medium text-royal-ivory">ELO par contrôle de temps</h2>
-        <ul className="space-y-3">
-          {sortedElo.map((row) => (
-            <li key={row.timeControl} className="flex items-center justify-between text-sm">
-              <span className="text-royal-muted">{TC_LABELS[row.timeControl] ?? row.timeControl}</span>
-              <span className="font-mono text-royal-ivory">
-                {row.rating}
-                <span className="ml-2 text-xs text-royal-muted">({row.gamesPlayed} parties)</span>
-              </span>
-            </li>
-          ))}
-        </ul>
+      <section className="space-y-4">
+        <h2 className="font-display text-lg font-medium text-royal-ivory">ELO &amp; progression</h2>
+        <ProfileEloPanel
+          profileUsername={profile.username}
+          historyPage={page}
+          chartTc={chartTc}
+          chartPoints={eloHistoryByTc[chartTc]}
+          eloRatings={profile.eloRatings}
+          eloHistoryByTc={eloHistoryByTc}
+        />
       </section>
 
       <section className="space-y-4">
@@ -293,7 +399,7 @@ export default async function ProfilePage({
             <nav className="flex items-center justify-between pt-2" aria-label="Pagination historique">
               {hasPrev ? (
                 <Link
-                  href={`/profile/${encodeURIComponent(username)}?page=${page - 1}`}
+                  href={buildProfileHref(username, page - 1, chartTc)}
                   className="rounded-lg border border-royal-surface-elevated px-4 py-2 text-sm text-royal-muted transition hover:border-royal-gold/50 hover:text-royal-ivory"
                 >
                   ← Précédent
@@ -308,7 +414,7 @@ export default async function ProfilePage({
 
               {hasNext ? (
                 <Link
-                  href={`/profile/${encodeURIComponent(username)}?page=${page + 1}`}
+                  href={buildProfileHref(username, page + 1, chartTc)}
                   className="rounded-lg border border-royal-surface-elevated px-4 py-2 text-sm text-royal-muted transition hover:border-royal-gold/50 hover:text-royal-ivory"
                 >
                   Suivant →
