@@ -1,5 +1,6 @@
 "use client";
 
+import { KeyRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useCallback, useState } from "react";
@@ -54,21 +55,34 @@ export function JoinPrivateGameCard(): React.ReactElement {
   }, [code, router, session?.accessToken]);
 
   return (
-    <div className="rounded-xl border border-royal-surface-elevated bg-royal-surface/60 p-4 shadow-inner">
-      <h3 className="font-display text-sm font-semibold text-royal-gold">Rejoindre une partie</h3>
-      <p className="mt-1 text-xs text-royal-muted">Collez le code d&apos;invitation (8 caractères).</p>
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+    <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)]/80 p-5 shadow-[var(--shadow-card)] backdrop-blur transition-colors hover:border-[color:var(--border-default)]">
+      <div className="flex items-center gap-2">
+        <span className="flex size-8 items-center justify-center rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] text-[color:var(--gold)]">
+          <KeyRound className="size-4" aria-hidden />
+        </span>
+        <div>
+          <h3 className="font-display text-sm font-semibold text-royal-ivory">Rejoindre une partie</h3>
+          <p className="text-xs text-royal-muted">Collez le code d&apos;invitation (8 caractères).</p>
+        </div>
+      </div>
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
         <input
           type="text"
           maxLength={12}
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
           placeholder="ABCD1234"
-          className="min-w-0 flex-1 rounded-md border border-royal-surface-elevated bg-royal-bg px-3 py-2 font-mono text-sm text-royal-ivory placeholder:text-royal-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-royal-gold"
+          aria-label="Code d'invitation"
+          className="min-w-0 flex-1 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-base)] px-3 py-2 font-mono text-sm tracking-[0.2em] text-royal-ivory placeholder:text-[color:var(--text-disabled)] placeholder:tracking-normal transition-colors focus-visible:border-[color:var(--border-gold-bright)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--gold-glow-strong)] disabled:opacity-50"
           disabled={status !== "authenticated" || busy}
         />
-        <Button type="button" variant="secondary" disabled={busy || status !== "authenticated"} onClick={() => void join()}>
-          Rejoindre
+        <Button
+          type="button"
+          variant="royal"
+          disabled={busy || status !== "authenticated"}
+          onClick={() => void join()}
+        >
+          {busy ? "Connexion…" : "Rejoindre"}
         </Button>
       </div>
       {err ? (
@@ -76,7 +90,7 @@ export function JoinPrivateGameCard(): React.ReactElement {
           {err}
         </p>
       ) : null}
-      {ok ? <p className="mt-2 text-xs text-royal-gold">{ok}</p> : null}
+      {ok ? <p className="mt-2 text-xs text-[color:var(--gold-bright)]">{ok}</p> : null}
     </div>
   );
 }

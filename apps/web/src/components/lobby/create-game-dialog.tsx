@@ -2,6 +2,7 @@
 
 import { MATCHMAKING_QUEUE_PRESETS } from "@royalchess/shared";
 import type { MatchmakingQueuePreset } from "@royalchess/shared";
+import { UserPlus } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
@@ -154,8 +155,9 @@ export function CreateGameDialog(): React.ReactElement {
         <Button
           type="button"
           variant="outline"
-          className="border-royal-gold/40 text-royal-ivory hover:bg-royal-surface-elevated"
+          className="gap-2 border-[color:var(--border-gold)] bg-[color:var(--bg-surface)] text-royal-ivory shadow-sm transition-colors hover:border-[color:var(--border-gold-bright)] hover:bg-[color:var(--bg-elevated)] hover:text-[color:var(--gold-bright)]"
         >
+          <UserPlus className="size-4" aria-hidden />
           Partie privée
         </Button>
       </DialogTrigger>

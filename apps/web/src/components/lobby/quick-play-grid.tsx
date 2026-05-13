@@ -2,7 +2,7 @@
 
 import { MATCHMAKING_QUEUE_PRESETS } from "@royalchess/shared";
 import type { MatchmakingQueuePreset } from "@royalchess/shared";
-import { Clock, Loader2, X } from "lucide-react";
+import { Flame, Hourglass, Loader2, LucideIcon, Swords, X, Zap } from "lucide-react";
 import { useCallback, useEffect, type ReactElement } from "react";
 import { useSearchParams } from "next/navigation";
 import { formatMatchmakingWait, useMatchmaking } from "@/hooks/use-matchmaking";
@@ -11,12 +11,14 @@ import { cn } from "@/lib/utils";
 const QUICK_MODES: readonly {
   readonly label: string;
   readonly subtitle: string;
+  readonly tagline: string;
+  readonly icon: LucideIcon;
   readonly preset: MatchmakingQueuePreset;
 }[] = [
-  { label: "Bullet", subtitle: "1+0", preset: MATCHMAKING_QUEUE_PRESETS[0] },
-  { label: "Blitz", subtitle: "3+2", preset: MATCHMAKING_QUEUE_PRESETS[1] },
-  { label: "Blitz", subtitle: "5+0", preset: MATCHMAKING_QUEUE_PRESETS[2] },
-  { label: "Rapide", subtitle: "10+0", preset: MATCHMAKING_QUEUE_PRESETS[3] },
+  { label: "Bullet", subtitle: "1+0", tagline: "Réflexes purs", icon: Zap, preset: MATCHMAKING_QUEUE_PRESETS[0] },
+  { label: "Blitz", subtitle: "3+2", tagline: "Tempo soutenu", icon: Flame, preset: MATCHMAKING_QUEUE_PRESETS[1] },
+  { label: "Blitz", subtitle: "5+0", tagline: "Combat franc", icon: Swords, preset: MATCHMAKING_QUEUE_PRESETS[2] },
+  { label: "Rapide", subtitle: "10+0", tagline: "Calcul posé", icon: Hourglass, preset: MATCHMAKING_QUEUE_PRESETS[3] },
 ];
 
 function presetKey(p: MatchmakingQueuePreset): string {
@@ -118,6 +120,7 @@ export function QuickPlayGrid(): ReactElement {
           const active = samePreset(mm.activePreset, m.preset);
           const searchingHere = mm.status === "searching" && active;
           const disabled = mm.status === "found";
+          const Icon = m.icon;
           return (
             <button
               key={presetKey(m.preset)}
@@ -125,25 +128,68 @@ export function QuickPlayGrid(): ReactElement {
               disabled={disabled}
               onClick={() => onModeClick(m.preset)}
               className={cn(
-                "group flex flex-col items-start gap-2 rounded-xl border bg-royal-surface p-4 text-left shadow-md transition",
-                "border-royal-surface-elevated",
-                "hover:border-royal-gold/80 hover:shadow-[0_0_0_1px_rgba(212,175,55,0.35)] hover:ring-1 hover:ring-royal-gold/30",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-royal-gold",
-                searchingHere && "border-royal-gold ring-2 ring-royal-gold/40 shadow-lg",
+                // Carte premium : layer surface + bordure ultra-subtile.
+                // Hover : remontée 1px, bordure dorée, halo gold doux. Animation 200ms ease-out-expo.
+                "group relative isolate flex flex-col items-start gap-3 overflow-hidden rounded-2xl border p-5 text-left",
+                "border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)]",
+                "shadow-[var(--shadow-card)]",
+                "transition-[transform,border-color,box-shadow] duration-200 ease-out",
+                "hover:-translate-y-0.5 hover:border-[color:var(--border-gold)] hover:shadow-[var(--shadow-elevated),var(--glow-gold)]",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--gold)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-base)]",
+                searchingHere &&
+                  "-translate-y-0.5 border-[color:var(--border-gold-bright)] shadow-[var(--shadow-elevated),var(--glow-gold)]",
                 mm.status === "searching" && !active && "opacity-55",
                 disabled && "pointer-events-none opacity-40",
               )}
             >
-              {searchingHere ? (
-                <Loader2 className="size-5 shrink-0 animate-spin text-royal-gold" aria-hidden />
-              ) : (
-                <Clock className="size-5 text-royal-gold transition group-hover:text-royal-gold" aria-hidden />
-              )}
-              <span className="font-display text-lg text-royal-ivory">{m.label}</span>
-              <span className="text-sm text-royal-muted">{m.subtitle}</span>
-              <span className="text-xs text-royal-gold/90">
-                {searchingHere ? "Recherche en cours…" : "Lancer"}
+              <span
+                aria-hidden
+                className={cn(
+                  // Glow gold radial discret en haut à droite, révélé au hover ou en recherche.
+                  "pointer-events-none absolute -right-12 -top-12 size-32 rounded-full bg-[color:var(--gold-glow-strong)] blur-2xl",
+                  "opacity-0 transition-opacity duration-300 group-hover:opacity-100",
+                  searchingHere && "opacity-100",
+                )}
+              />
+              <span
+                className={cn(
+                  "relative flex size-11 items-center justify-center rounded-xl border transition-colors duration-200",
+                  "border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]",
+                  "group-hover:border-[color:var(--border-gold)]",
+                  searchingHere && "border-[color:var(--border-gold-bright)]",
+                )}
+              >
+                {searchingHere ? (
+                  <Loader2 className="size-5 animate-spin text-[color:var(--gold-bright)]" aria-hidden />
+                ) : (
+                  <Icon
+                    className={cn(
+                      "size-5 text-[color:var(--gold)] transition-colors duration-200",
+                      "group-hover:text-[color:var(--gold-bright)]",
+                    )}
+                    aria-hidden
+                  />
+                )}
               </span>
+              <div className="relative flex flex-col">
+                <span className="font-display text-xl font-semibold leading-none text-royal-ivory">
+                  {m.label}
+                </span>
+                <span className="mt-1 font-mono text-sm text-royal-muted">{m.subtitle}</span>
+              </div>
+              <div className="relative mt-1 flex w-full items-center justify-between">
+                <span className="text-xs uppercase tracking-[0.12em] text-[color:var(--text-muted)]">
+                  {m.tagline}
+                </span>
+                <span
+                  className={cn(
+                    "text-xs font-medium uppercase tracking-[0.12em] text-[color:var(--gold)] transition-transform duration-200",
+                    "group-hover:translate-x-0.5 group-hover:text-[color:var(--gold-bright)]",
+                  )}
+                >
+                  {searchingHere ? "Recherche…" : "Lancer →"}
+                </span>
+              </div>
             </button>
           );
         })}
