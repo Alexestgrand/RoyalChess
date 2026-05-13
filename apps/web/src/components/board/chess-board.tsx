@@ -3,17 +3,20 @@
 import {
   DndContext,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { Chess, FLAGS, type ChessInstance, type Move, type Square as JsSquare } from "chess.js";
 import type { MoveInput, PieceColor, PieceType, Square } from "@royalchess/shared";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { ChessPiece } from "@/components/board/chess-piece";
 import { ChessSquare } from "@/components/board/chess-square";
 import { PromotionModal } from "@/components/board/promotion-modal";
+import { formatPieceFrenchLabel, formatSquareAriaLabel } from "@/lib/aria-piece-label";
 import { displayFiles, displayRanks, squareAt } from "@/lib/board-display";
 import { pseudoLegalTargets } from "@/lib/premove-helpers";
 import { playChessSound } from "@/lib/chess-sounds";
@@ -103,6 +106,7 @@ export function ChessBoard({
     mode: "play" | "premove";
   } | null>(null);
   const [dragPiece, setDragPiece] = useState<{ square: Square; type: PieceType; color: PieceColor } | null>(null);
+  const [dragAnnounce, setDragAnnounce] = useState<string>("");
   const prevFenRef = useRef<string | null>(null);
 
   const fen =
@@ -156,6 +160,7 @@ export function ChessBoard({
   }, [gameState?.status, soundEnabled]);
 
   const inCheck = chess.in_check();
+  const inCheckmate = chess.in_checkmate();
   const turn = chess.turn();
 
   const clearSelection = useCallback((): void => {
@@ -294,22 +299,38 @@ export function ChessBoard({
   const onDragEnd = useCallback(
     (e: DragEndEvent): void => {
       if (!interactive) {
+        setDragPiece(null);
         return;
       }
       setDragPiece(null);
-      const active = e.active.data.current as { square: Square } | undefined;
+      const active = e.active.data.current as { square: Square; type: PieceType; color: PieceColor } | undefined;
+      if (!active) {
+        return;
+      }
+      const label = formatPieceFrenchLabel(active.type, active.color);
       const overId = e.over?.id;
-      if (!active || typeof overId !== "string" || !overId.startsWith("sq-")) {
+      if (typeof overId !== "string" || !overId.startsWith("sq-")) {
+        setDragAnnounce("Coup annulé.");
         return;
       }
       const to = overId.replace("sq-", "") as Square;
+      if (active.square === to) {
+        setDragAnnounce("Coup annulé.");
+        return;
+      }
+      setDragAnnounce(`${label} déplacé de ${active.square} à ${to}.`);
       const premoveMode = !!(onQueuePremove && !isMyTurn && myColor);
       submitMove(active.square, to, undefined, premoveMode ? "premove" : "play");
     },
     [interactive, isMyTurn, myColor, onQueuePremove, submitMove],
   );
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
   const boardGrid = chess.board();
 
@@ -336,11 +357,25 @@ export function ChessBoard({
         if (!interactive) {
           return;
         }
-        setDragPiece(e.active.data.current as typeof dragPiece);
+        const payload = e.active.data.current as { square: Square; type: PieceType; color: PieceColor } | null;
+        setDragPiece(payload);
+        if (payload) {
+          const label = formatPieceFrenchLabel(payload.type, payload.color);
+          setDragAnnounce(`${label} sélectionné, case ${payload.square}. Glisser pour déplacer.`);
+        }
+      }}
+      onDragCancel={() => {
+        setDragPiece(null);
+        if (interactive) {
+          setDragAnnounce("Coup annulé.");
+        }
       }}
       onDragEnd={onDragEnd}
     >
-      <div className="relative w-full max-w-[min(92vw,640px)]">
+      <div className="w-full">
+        <div aria-live="polite" className="sr-only">
+          {dragAnnounce}
+        </div>
         {analysisMode ? (
           <div className="mb-2 flex justify-end">
             <button
@@ -353,7 +388,16 @@ export function ChessBoard({
           </div>
         ) : null}
         {moveError ? <p className="mb-2 text-center text-sm text-royal-danger">{moveError}</p> : null}
-        <div className="relative pl-5 pb-5">
+        {inCheckmate ? (
+          <div role="alert" className="mb-2 text-center text-sm font-semibold text-royal-danger">
+            Échec et mat
+          </div>
+        ) : inCheck ? (
+          <div role="alert" className="mb-2 text-center text-sm font-semibold text-royal-danger">
+            Échec !
+          </div>
+        ) : null}
+        <div className="relative aspect-square w-full max-w-[min(100vw,calc(100vh-160px))] pl-5 pb-5">
           <div className="absolute bottom-5 left-0 top-0 flex w-4 flex-col justify-around text-[10px] font-medium text-royal-muted">
             {ranks.map((rk) => (
               <span key={rk} className="text-right">
@@ -362,7 +406,13 @@ export function ChessBoard({
             ))}
           </div>
           <div className={cn("aspect-square w-full", !interactive && "pointer-events-none")}>
-            <div className="grid h-full w-full grid-cols-8 grid-rows-8 overflow-hidden rounded-lg border-2 border-royal-surface-elevated shadow-xl">
+            <div
+              role="grid"
+              aria-label="Échiquier"
+              aria-rowcount={8}
+              aria-colcount={8}
+              className="grid h-full w-full grid-cols-8 grid-rows-8 overflow-hidden rounded-lg border-2 border-royal-surface-elevated shadow-xl"
+            >
               {ranks.map((rk) =>
                 files.map((fl) => {
                   const sq = squareAt(fl, rk);
@@ -382,6 +432,7 @@ export function ChessBoard({
                     >
                       <ChessSquare
                         square={sq}
+                        ariaLabel={formatSquareAriaLabel(sq, pc)}
                         isLight={isLight}
                         isLegalTarget={isLegal}
                         isSelected={isSelected}

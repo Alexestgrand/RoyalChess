@@ -119,7 +119,7 @@ export function GamePanel({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <Button type="button" size="sm" variant="ghost" onClick={toggleSound} aria-label="Son">
+      <Button type="button" size="sm" variant="ghost" onClick={toggleSound} aria-label="Activer ou désactiver les sons de la partie">
         {soundEnabled ? <Volume2 className="size-4" /> : <VolumeX className="size-4 text-royal-muted" />}
       </Button>
     </div>

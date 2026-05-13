@@ -5,6 +5,7 @@ import Image from "next/image";
 import type { PieceColor, PieceType, Square } from "@royalchess/shared";
 import type { CSSProperties, ReactElement } from "react";
 import { CSS } from "@dnd-kit/utilities";
+import { formatPieceFrenchLabel } from "@/lib/aria-piece-label";
 import { cn } from "@/lib/utils";
 
 export interface ChessPieceProps {
@@ -55,7 +56,7 @@ export function ChessPiece({
         disabled && "cursor-default opacity-90",
         !disabled && "cursor-grab active:cursor-grabbing",
       )}
-      aria-label={`Pièce ${type} ${square}`}
+      aria-label={`${formatPieceFrenchLabel(type, color)}, case ${square}`}
     >
       <Image src={src} alt="" width={72} height={72} className="pointer-events-none size-[82%] select-none object-contain drop-shadow-md" unoptimized />
     </button>

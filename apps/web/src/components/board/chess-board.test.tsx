@@ -28,7 +28,7 @@ function baseGameState(over: Partial<GameState> = {}): GameState {
 }
 
 async function clickPiece(user: ReturnType<typeof userEvent.setup>, square: string): Promise<void> {
-  await user.click(screen.getAllByRole("button", { name: new RegExp(`^Pièce \\S+ ${square}$`) })[0]!);
+  await user.click(screen.getAllByRole("button", { name: new RegExp(`case ${square}\\b`, "i") })[0]!);
 }
 
 describe("ChessBoard", () => {

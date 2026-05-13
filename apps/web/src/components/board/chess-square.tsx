@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 
 export interface ChessSquareProps {
   readonly square: Square;
+  /** Libellé vocal complet de la case (ex. « Case e4, Pion blanc »). */
+  readonly ariaLabel: string;
   readonly isLight: boolean;
   readonly isLegalTarget: boolean;
   readonly isSelected: boolean;
@@ -20,6 +22,7 @@ export interface ChessSquareProps {
 
 export function ChessSquare({
   square,
+  ariaLabel,
   isLight,
   isLegalTarget,
   isSelected,
@@ -34,16 +37,10 @@ export function ChessSquare({
   return (
     <div
       ref={setNodeRef}
-      role="button"
-      aria-label={square}
-      tabIndex={0}
+      role="gridcell"
+      aria-label={ariaLabel}
+      aria-selected={isSelected ? true : undefined}
       onClick={() => onSquareClick(square)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onSquareClick(square);
-        }
-      }}
       onContextMenu={(e) => {
         if (onContextMenu) {
           e.preventDefault();

@@ -18,7 +18,7 @@ const ChessBoard = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="aspect-square w-full max-w-[min(92vw,720px)] animate-pulse rounded-xl bg-royal-surface/40" />
+      <div className="aspect-square w-full max-w-[min(100vw,calc(100vh-160px))] animate-pulse rounded-xl bg-royal-surface/40" />
     ),
   },
 );
@@ -231,64 +231,77 @@ export function GameRoomClient({
   }, [router]);
 
   return (
-    <div className="relative flex min-h-[calc(100dvh-5rem)] flex-col gap-4 lg:flex-row lg:items-stretch">
+    <div className="relative flex min-h-[calc(100dvh-5rem)] flex-col gap-4">
       <GameOverModal onNewGame={handleNewGame} onAnalyze={handleAnalyze} onRematch={handleRematch} />
-      <div className="relative flex flex-1 flex-col items-center justify-center gap-3 lg:min-h-0">
-        {connecting || waiting ? (
-          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 rounded-xl bg-royal-bg/80 px-4 text-center backdrop-blur-sm">
-            <p className="font-display text-lg text-royal-ivory">
-              {connecting ? "Connexion à la partie…" : "En attente de l&apos;adversaire…"}
-            </p>
-            {isHostWaiting ? (
-              <Button type="button" variant="royal" size="sm" onClick={onCopyInvite}>
-                Copier le lien d&apos;invitation
-              </Button>
-            ) : null}
+      <div className="md:grid md:min-h-0 md:grid-cols-[minmax(0,1fr)_320px] md:items-stretch md:gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="relative flex min-h-0 flex-col items-center justify-center gap-3">
+          {connecting || waiting ? (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 rounded-xl bg-royal-bg/80 px-4 text-center backdrop-blur-sm">
+              <p className="font-display text-lg text-royal-ivory">
+                {connecting ? "Connexion à la partie…" : "En attente de l&apos;adversaire…"}
+              </p>
+              {isHostWaiting ? (
+                <Button type="button" variant="royal" size="sm" onClick={onCopyInvite}>
+                  Copier le lien d&apos;invitation
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+          <div className="relative flex w-full flex-1 flex-col items-center justify-center">
+            <ChessBoard
+              gameId={gameId}
+              onMove={sendMove}
+              onCancelPremove={onCancelPremove}
+              onQueuePremove={premovesEnabled ? onQueuePremove : undefined}
+            />
           </div>
-        ) : null}
-        <div className="relative flex w-full max-w-[min(92vw,720px)] flex-1 flex-col items-center justify-center">
-          <ChessBoard
+          <OpponentStatusBanner />
+          {isFinished ? (
+            <GameOverBanner
+              canReopen={lastGameOverRef.current !== null}
+              onReopenSummary={handleReopenSummary}
+              onNewGame={handleNewGame}
+              onAnalyze={handleAnalyze}
+            />
+          ) : null}
+        </div>
+
+        <div className="hidden min-h-0 w-full shrink-0 md:block">
+          <GamePanel
             gameId={gameId}
-            onMove={sendMove}
-            onCancelPremove={onCancelPremove}
-            onQueuePremove={premovesEnabled ? onQueuePremove : undefined}
+            sendChatMessage={sendChatMessage}
+            resign={resign}
+            offerDraw={offerDraw}
+            acceptDraw={acceptDraw}
+            declineDraw={declineDraw}
           />
         </div>
-        <OpponentStatusBanner />
-        {isFinished ? (
-          <GameOverBanner
-            canReopen={lastGameOverRef.current !== null}
-            onReopenSummary={handleReopenSummary}
-            onNewGame={handleNewGame}
-            onAnalyze={handleAnalyze}
-          />
-        ) : null}
       </div>
 
-      <div className="hidden w-full max-w-md shrink-0 lg:block">
-        <GamePanel
-          gameId={gameId}
-          sendChatMessage={sendChatMessage}
-          resign={resign}
-          offerDraw={offerDraw}
-          acceptDraw={acceptDraw}
-          declineDraw={declineDraw}
-        />
-      </div>
-
-      <div className="lg:hidden">
+      <div className="md:hidden">
         <Tabs defaultValue="moves" className="w-full">
           <TabsList className="w-full">
+            <TabsTrigger value="players" className="flex-1">
+              Joueurs
+            </TabsTrigger>
             <TabsTrigger value="moves" className="flex-1">
               Coups
             </TabsTrigger>
             <TabsTrigger value="chat" className="flex-1">
               Chat
             </TabsTrigger>
-            <TabsTrigger value="info" className="flex-1">
-              Infos
-            </TabsTrigger>
           </TabsList>
+          <TabsContent value="players">
+            <GamePanel
+              gameId={gameId}
+              sendChatMessage={sendChatMessage}
+              resign={resign}
+              offerDraw={offerDraw}
+              acceptDraw={acceptDraw}
+              declineDraw={declineDraw}
+              compactInfoOnly
+            />
+          </TabsContent>
           <TabsContent value="moves">
             <GamePanel
               gameId={gameId}
@@ -309,17 +322,6 @@ export function GameRoomClient({
               acceptDraw={acceptDraw}
               declineDraw={declineDraw}
               compactChatOnly
-            />
-          </TabsContent>
-          <TabsContent value="info">
-            <GamePanel
-              gameId={gameId}
-              sendChatMessage={sendChatMessage}
-              resign={resign}
-              offerDraw={offerDraw}
-              acceptDraw={acceptDraw}
-              declineDraw={declineDraw}
-              compactInfoOnly
             />
           </TabsContent>
         </Tabs>

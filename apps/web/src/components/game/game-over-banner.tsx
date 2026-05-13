@@ -65,7 +65,7 @@ export function GameOverBanner({
     <div
       role="status"
       aria-live="polite"
-      className="mt-2 flex w-full max-w-[min(92vw,720px)] flex-col items-stretch gap-3 rounded-xl border border-royal-gold/30 bg-royal-surface px-4 py-3 shadow-md sm:flex-row sm:items-center sm:justify-between"
+      className="mt-2 flex w-full flex-col items-stretch gap-3 rounded-xl border border-royal-gold/30 bg-royal-surface px-4 py-3 shadow-md sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="flex items-center gap-3">
         <span

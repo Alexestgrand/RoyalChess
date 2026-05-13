@@ -47,7 +47,7 @@ export function Navbar(): ReactElement {
             >
               <UserAvatar username={username || "?"} src={avatarUrl} className="size-8" />
               <span className="hidden max-w-[140px] truncate text-sm text-royal-ivory sm:inline">{username}</span>
-              <ChevronDown className="size-4 shrink-0 opacity-70" aria-hidden />
+              <ChevronDown className="hidden size-4 shrink-0 opacity-70 sm:inline" aria-hidden />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">

@@ -49,6 +49,7 @@ export function PromotionModal({ open, color, onPick, onCancel }: PromotionModal
               key={o.promotion}
               type="button"
               onClick={() => onPick(o.promotion)}
+              aria-label={`Promouvoir en ${o.label}`}
               className={cn(
                 "flex flex-col items-center gap-2 rounded-lg border border-royal-surface bg-royal-surface p-3 transition",
                 "hover:border-royal-gold hover:bg-royal-surface-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-royal-gold",
