@@ -4,7 +4,7 @@ import type { GameState, MoveInput } from "@royalchess/shared";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import { GameOverModal } from "@/components/game/game-over-modal";
 
 // Le board fait du drag-n-drop (`@dnd-kit`), joue des sons et dépend du
@@ -22,6 +22,7 @@ const ChessBoard = dynamic(
   },
 );
 import { GamePanel } from "@/components/game/game-panel";
+import { OpponentStatusBanner } from "@/components/game/opponent-status-banner";
 import { GameOverBanner } from "@/components/game/game-over-banner";
 import { useGameSocket } from "@/hooks/use-game-socket";
 import { usePremove } from "@/hooks/use-premove";
@@ -46,7 +47,7 @@ export function GameRoomClient({
   gameId,
   initialSnapshot,
   inviteCode,
-}: GameRoomClientProps): React.ReactElement {
+}: GameRoomClientProps): ReactElement {
   const { data: session, status: sessionStatus } = useSession();
   const router = useRouter();
   const hydrated = useRef(false);
@@ -193,6 +194,7 @@ export function GameRoomClient({
             onQueuePremove={onQueuePremove}
           />
         </div>
+        <OpponentStatusBanner />
         {isFinished ? (
           <GameOverBanner
             canReopen={lastGameOverRef.current !== null}

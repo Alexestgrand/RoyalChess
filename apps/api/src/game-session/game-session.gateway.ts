@@ -1,10 +1,4 @@
 import { UseFilters } from "@nestjs/common";
-// Délai de grâce avant qu'un joueur déconnecté ne perde par time-out.
-// - 60 s en production : équilibre entre fair-play et tolérance réseau.
-// - 10 min en dev : évite que les HMR Next.js / restart `pnpm dev` côté API
-//   ne provoquent des défaites accidentelles pendant le développement.
-const DISCONNECT_DEADLINE_MS =
-  process.env.NODE_ENV === "production" ? 60_000 : 600_000;
 import {
   ConnectedSocket,
   MessageBody,
@@ -35,6 +29,19 @@ function handshakeGameId(client: Socket): string | undefined {
   const gameId = Array.isArray(raw.gameId) ? raw.gameId[0] : raw.gameId;
   return typeof gameId === "string" && gameId.length > 0 ? gameId : undefined;
 }
+
+// Délai de grâce avant forfait sur déconnexion (ms). Défaut 60 s (prod comme dev).
+// Pour des sessions longues pendant le dev (HMR), définir p.ex. `DISCONNECT_GRACE_MS=600000`.
+function resolveDisconnectDeadlineMs(): number {
+  const raw = process.env.DISCONNECT_GRACE_MS?.trim();
+  if (raw && /^\d+$/.test(raw)) {
+    const n = Number(raw);
+    return Math.min(Math.max(n, 5_000), 3_600_000);
+  }
+  return 60_000;
+}
+
+const DISCONNECT_DEADLINE_MS = resolveDisconnectDeadlineMs();
 
 @WebSocketGateway({ namespace: "/game" })
 @UseFilters(new WsExceptionFilter())

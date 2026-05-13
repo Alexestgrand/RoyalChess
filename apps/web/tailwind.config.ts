@@ -87,12 +87,17 @@ const config: Config = {
           "60%": { transform: "translateX(-2px)" },
           "80%": { transform: "translateX(2px)" },
         },
+        "flash-reject": {
+          "0%, 100%": { backgroundColor: "transparent" },
+          "30%, 70%": { backgroundColor: "rgba(220, 38, 38, 0.5)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "legal-pulse": "legal-pulse 1.2s ease-in-out infinite",
         "king-shake": "king-shake 0.45s ease-in-out",
+        "flash-reject": "flash-reject 0.6s ease-in-out 1",
       },
     },
   },

@@ -1,8 +1,7 @@
 "use client";
 
-import type { PieceColor } from "@royalchess/shared";
+import type { ReactElement } from "react";
 import { Volume2, VolumeX } from "lucide-react";
-import { useEffect, useState } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,38 +33,6 @@ export interface GamePanelProps {
   readonly compactInfoOnly?: boolean;
 }
 
-function useLiveClock(
-  whiteMs: number,
-  blackMs: number,
-  turn: PieceColor,
-  status: string | undefined,
-  tickKey: number,
-): { white: number; black: number } {
-  const [w, setW] = useState(whiteMs);
-  const [b, setB] = useState(blackMs);
-
-  useEffect(() => {
-    setW(whiteMs);
-    setB(blackMs);
-  }, [whiteMs, blackMs, tickKey]);
-
-  useEffect(() => {
-    if (status !== "active") {
-      return;
-    }
-    const id = window.setInterval(() => {
-      if (turn === "w") {
-        setW((x) => Math.max(0, x - 1000));
-      } else {
-        setB((x) => Math.max(0, x - 1000));
-      }
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [turn, status]);
-
-  return { white: w, black: b };
-}
-
 export function GamePanel({
   gameId,
   sendChatMessage,
@@ -76,22 +43,14 @@ export function GamePanel({
   compactMovesOnly,
   compactChatOnly,
   compactInfoOnly,
-}: GamePanelProps): React.ReactElement {
+}: GamePanelProps): ReactElement {
   void gameId;
   const gameState = useGameStore((s) => s.gameState);
   const drawOfferedBy = useGameStore((s) => s.drawOfferedBy);
   const myColor = useGameStore((s) => s.myColor);
+  const gameReady = useGameStore((s) => s.gameReady);
   const soundEnabled = useUiStore((s) => s.soundEnabled);
   const toggleSound = useUiStore((s) => s.toggleSound);
-
-  const tickKey = gameState?.moveCount ?? 0;
-  const clocks = useLiveClock(
-    gameState?.whiteTimeRemaining ?? 0,
-    gameState?.blackTimeRemaining ?? 0,
-    gameState?.turn ?? "w",
-    gameState?.status,
-    tickKey,
-  );
 
   if (!gameState) {
     return <div className="rounded-xl border border-royal-surface-elevated bg-royal-surface p-4 text-sm text-royal-muted">Chargement…</div>;
@@ -116,10 +75,6 @@ export function GamePanel({
     </div>
   );
 
-  // États possibles de l'offre de nulle pour l'utilisateur courant :
-  //  - aucune offre        → bouton "Proposer nulle"
-  //  - j'ai proposé        → indicateur "Offre envoyée" + bouton désactivé
-  //  - mon adversaire a proposé → boutons "Accepter / Refuser"
   const drawIOffered = drawOfferedBy !== null && myColor !== null && drawOfferedBy === myColor;
   const drawOpponentOffered = drawOfferedBy !== null && myColor !== null && drawOfferedBy !== myColor;
   const gameIsActive = gameState.status === "active";
@@ -176,17 +131,21 @@ export function GamePanel({
         align="top"
         username={gameState.blackPlayer.username}
         avatarUrl={gameState.blackPlayer.avatarUrl}
-        clockMs={clocks.black}
+        clockMs={gameState.blackTimeRemaining}
         isActiveClock={gameState.status === "active" && gameState.turn === "b"}
         materialAdvantage={blackAdv}
+        gameReady={gameReady}
+        gameStatus={gameState.status}
       />
       <PlayerCard
         align="bottom"
         username={gameState.whitePlayer.username}
         avatarUrl={gameState.whitePlayer.avatarUrl}
-        clockMs={clocks.white}
+        clockMs={gameState.whiteTimeRemaining}
         isActiveClock={gameState.status === "active" && gameState.turn === "w"}
         materialAdvantage={whiteAdv}
+        gameReady={gameReady}
+        gameStatus={gameState.status}
       />
       {actionsBlock}
     </div>

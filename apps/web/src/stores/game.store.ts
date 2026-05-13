@@ -7,6 +7,28 @@ export interface GameOverPayload {
   readonly eloDelta?: number;
 }
 
+/** Joueur déconnecté temporairement (événement serveur `opponent_disconnected`). */
+export interface OpponentDisconnectedState {
+  readonly userId: string;
+  readonly forfeitAt: number;
+}
+
+/** Flash visuel sur case(s) après refus serveur du coup optimiste. */
+export interface RejectedMoveFlashState {
+  readonly from: Square;
+  readonly to: Square;
+  readonly at: number;
+}
+
+let rejectFlashTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+
+function clearRejectFlashTimer(): void {
+  if (rejectFlashTimer !== null) {
+    globalThis.clearTimeout(rejectFlashTimer);
+    rejectFlashTimer = null;
+  }
+}
+
 interface GameStoreState {
   gameState: GameState | null;
   chatMessages: readonly ChatMessage[];
@@ -18,6 +40,11 @@ interface GameStoreState {
   drawOfferedBy: PieceColor | null;
   moveError: string | null;
   gameOver: GameOverPayload | null;
+  opponentDisconnected: OpponentDisconnectedState | null;
+  gameReady: boolean;
+  optimisticFen: string | null;
+  optimisticLastMove: MoveInput | null;
+  rejectedMove: RejectedMoveFlashState | null;
   setGameState: (state: GameState | null, myUserId: string | undefined) => void;
   appendChatMessage: (msg: ChatMessage) => void;
   setSelectedSquare: (sq: Square | null) => void;
@@ -25,6 +52,11 @@ interface GameStoreState {
   setPremove: (m: MoveInput | null) => void;
   setMoveError: (msg: string | null) => void;
   setGameOver: (payload: GameOverPayload | null) => void;
+  setOpponentDisconnected: (payload: OpponentDisconnectedState | null) => void;
+  setGameReady: (b: boolean) => void;
+  setOptimistic: (fen: string, move: MoveInput) => void;
+  clearOptimistic: () => void;
+  flashReject: (move: { readonly from: Square; readonly to: Square }) => void;
   reset: () => void;
 }
 
@@ -51,15 +83,21 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   drawOfferedBy: null,
   moveError: null,
   gameOver: null,
+  opponentDisconnected: null,
+  gameReady: false,
+  optimisticFen: null,
+  optimisticLastMove: null,
+  rejectedMove: null,
   setGameState: (gameState, myUserId) => {
     const flags = deriveTurnFlags(gameState, myUserId);
-    // L'offre de nulle est portée par le `GameState` lui-même : on
-    // recopie la valeur dans le store afin que les boutons "Accepter /
-    // Refuser nulle" deviennent visibles côté adversaire. Sans cette
-    // propagation explicite, `drawOfferedBy` resterait figé sur sa
-    // valeur initiale (null).
     const drawOfferedBy = gameState?.drawOfferedBy ?? null;
-    set({ gameState, ...flags, drawOfferedBy });
+    set({
+      gameState,
+      ...flags,
+      drawOfferedBy,
+      optimisticFen: null,
+      optimisticLastMove: null,
+    });
   },
   appendChatMessage: (msg) => set({ chatMessages: [...get().chatMessages, msg] }),
   setSelectedSquare: (selectedSquare) => set({ selectedSquare }),
@@ -67,7 +105,20 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   setPremove: (premove) => set({ premove }),
   setMoveError: (moveError) => set({ moveError }),
   setGameOver: (gameOver) => set({ gameOver }),
-  reset: () =>
+  setOpponentDisconnected: (opponentDisconnected) => set({ opponentDisconnected }),
+  setGameReady: (gameReady) => set({ gameReady }),
+  setOptimistic: (optimisticFen, optimisticLastMove) => set({ optimisticFen, optimisticLastMove }),
+  clearOptimistic: () => set({ optimisticFen: null, optimisticLastMove: null }),
+  flashReject: (move) => {
+    clearRejectFlashTimer();
+    set({ rejectedMove: { from: move.from, to: move.to, at: Date.now() } });
+    rejectFlashTimer = globalThis.setTimeout(() => {
+      rejectFlashTimer = null;
+      set({ rejectedMove: null });
+    }, 800);
+  },
+  reset: () => {
+    clearRejectFlashTimer();
     set({
       gameState: null,
       chatMessages: [],
@@ -79,5 +130,11 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       drawOfferedBy: null,
       moveError: null,
       gameOver: null,
-    }),
+      opponentDisconnected: null,
+      gameReady: false,
+      optimisticFen: null,
+      optimisticLastMove: null,
+      rejectedMove: null,
+    });
+  },
 }));

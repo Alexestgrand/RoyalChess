@@ -10,7 +10,7 @@ import {
 } from "@dnd-kit/core";
 import { Chess, FLAGS, type ChessInstance, type Move, type Square as JsSquare } from "chess.js";
 import type { MoveInput, PieceColor, PieceType, Square } from "@royalchess/shared";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { ChessPiece } from "@/components/board/chess-piece";
 import { ChessSquare } from "@/components/board/chess-square";
 import { PromotionModal } from "@/components/board/promotion-modal";
@@ -76,7 +76,7 @@ export function ChessBoard({
   onMove,
   onCancelPremove,
   onQueuePremove,
-}: ChessBoardProps): React.ReactElement {
+}: ChessBoardProps): ReactElement {
   void gameId;
   const gameState = useGameStore((s) => s.gameState);
   const selectedSquare = useGameStore((s) => s.selectedSquare);
@@ -87,6 +87,9 @@ export function ChessBoard({
   const myColor = useGameStore((s) => s.myColor);
   const isMyTurn = useGameStore((s) => s.isMyTurn);
   const moveError = useGameStore((s) => s.moveError);
+  const optimisticFen = useGameStore((s) => s.optimisticFen);
+  const optimisticLastMove = useGameStore((s) => s.optimisticLastMove);
+  const rejectedMove = useGameStore((s) => s.rejectedMove);
   const soundEnabled = useUiStore((s) => s.soundEnabled);
 
   const [manualFlip, setManualFlip] = useState(false);
@@ -99,7 +102,11 @@ export function ChessBoard({
   const [dragPiece, setDragPiece] = useState<{ square: Square; type: PieceType; color: PieceColor } | null>(null);
   const prevFenRef = useRef<string | null>(null);
 
-  const fen = (controlledFen && controlledFen.length > 0 ? controlledFen : null) ?? gameState?.fen ?? START_FEN;
+  const fen =
+    (controlledFen && controlledFen.length > 0 ? controlledFen : null) ??
+    optimisticFen ??
+    gameState?.fen ??
+    START_FEN;
   const chess = useMemo(() => buildChess(fen), [fen]);
 
   const viewFlipped = analysisMode ? manualFlip : myColor === "b";
@@ -107,9 +114,13 @@ export function ChessBoard({
   const ranks = displayRanks(viewFlipped);
   const files = displayFiles(viewFlipped);
 
-  const lastMove = gameState?.lastMove;
+  const lastMove = optimisticLastMove ?? gameState?.lastMove ?? null;
 
   useEffect(() => {
+    if (optimisticFen) {
+      prevFenRef.current = fen;
+      return;
+    }
     if (!gameState?.lastMove) {
       prevFenRef.current = fen;
       return;
@@ -133,7 +144,7 @@ export function ChessBoard({
       }
     }
     prevFenRef.current = fen;
-  }, [fen, gameState?.lastMove, gameState, soundEnabled]);
+  }, [fen, gameState?.lastMove, gameState, soundEnabled, optimisticFen]);
 
   useEffect(() => {
     if (gameState?.status === "completed" || gameState?.status === "abandoned") {
@@ -229,10 +240,26 @@ export function ChessBoard({
         }
         return;
       }
-      onMove({ from, to, promotion: promotionPick ?? match.promotion });
+      const promotionArg = (promotionPick ?? match.promotion) as MoveInput["promotion"] | undefined;
+      const m = probe.move({
+        from: from as JsSquare,
+        to: to as JsSquare,
+        promotion: promotionArg,
+      });
+      if (m) {
+        const promotionOut: MoveInput["promotion"] | undefined =
+          (m.promotion as MoveInput["promotion"] | undefined) ?? promotionArg;
+        useGameStore.getState().setOptimistic(probe.fen(), { from, to, promotion: promotionOut });
+        if (probe.in_check()) {
+          void playChessSound("check", soundEnabled);
+        } else {
+          void playChessSound(classifySound(m), soundEnabled);
+        }
+      }
+      onMove({ from, to, promotion: promotionArg });
       clearSelection();
     },
-    [fen, onMove, onQueuePremove, chess, clearSelection, myColor],
+    [fen, onMove, onQueuePremove, chess, clearSelection, myColor, soundEnabled],
   );
 
   const handleSquareClick = useCallback(
@@ -342,6 +369,8 @@ export function ChessBoard({
                   const isLegal = legalMoves.includes(sq);
                   const isLast = !!lastMove && (lastMove.from === sq || lastMove.to === sq);
                   const premoveH = !!premove && (premove.from === sq || premove.to === sq);
+                  const isRejectFlash =
+                    rejectedMove !== null && (rejectedMove.from === sq || rejectedMove.to === sq);
                   const canDrag = interactive && !!pc && !analysisMode && isMyTurn && pc.color === myColor && !promotion;
                   return (
                     <div
@@ -354,6 +383,7 @@ export function ChessBoard({
                         isLegalTarget={isLegal}
                         isSelected={isSelected}
                         isLastMove={isLast}
+                        rejectFlash={isRejectFlash}
                         onSquareClick={handleSquareClick}
                         onContextMenu={handleContextMenu}
                       >

@@ -2,6 +2,7 @@
 
 import { useDroppable } from "@dnd-kit/core";
 import type { Square } from "@royalchess/shared";
+import type { ReactElement, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 export interface ChessSquareProps {
@@ -10,7 +11,9 @@ export interface ChessSquareProps {
   readonly isLegalTarget: boolean;
   readonly isSelected: boolean;
   readonly isLastMove: boolean;
-  readonly children?: React.ReactNode;
+  /** Refus serveur : flash rouge bref sur la case. */
+  readonly rejectFlash?: boolean;
+  readonly children?: ReactNode;
   readonly onSquareClick: (sq: Square) => void;
   readonly onContextMenu?: (sq: Square) => void;
 }
@@ -21,10 +24,11 @@ export function ChessSquare({
   isLegalTarget,
   isSelected,
   isLastMove,
+  rejectFlash = false,
   children,
   onSquareClick,
   onContextMenu,
-}: ChessSquareProps): React.ReactElement {
+}: ChessSquareProps): ReactElement {
   const { isOver, setNodeRef } = useDroppable({ id: `sq-${square}` });
 
   return (
@@ -51,6 +55,7 @@ export function ChessSquare({
         isLight ? "bg-royal-board-light" : "bg-royal-board-dark",
         isSelected && "ring-2 ring-inset ring-[color:var(--royal-board-selected)]",
         isLastMove && "shadow-[inset_0_0_0_4px_rgba(205,210,106,0.4)]",
+        rejectFlash && "animate-flash-reject",
         isLegalTarget && "after:absolute after:inset-[28%] after:rounded-full after:bg-royal-board-legal after:content-['']",
         isLegalTarget && "animate-legal-pulse",
         isOver && "brightness-110",
