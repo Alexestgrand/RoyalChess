@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { timingSafeEqual } from "node:crypto";
 import type { Request } from "express";
 import { OAuthProvider, Prisma, UserRole } from "@prisma/client";
+import { parseStoredUserPreferences, type UserPreferences } from "@royalchess/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { INITIAL_ELO_TIME_CONTROLS } from "./constants/elo-init.constants";
 import { sha256Hex } from "./auth-hash";
@@ -191,13 +192,18 @@ export class AuthService {
         avatarUrl: true,
         role: true,
         createdAt: true,
+        preferences: true,
         eloRatings: { select: { timeControl: true, rating: true, gamesPlayed: true } },
       },
     });
     if (!user) {
       throw new UnauthorizedException("Non authentifié");
     }
-    return user;
+    const preferences: UserPreferences | null =
+      user.preferences === null || user.preferences === undefined
+        ? null
+        : parseStoredUserPreferences(user.preferences as unknown);
+    return { ...user, preferences };
   }
 
   private async issueTokenPair(

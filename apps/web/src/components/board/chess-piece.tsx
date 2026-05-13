@@ -3,6 +3,7 @@
 import { useDraggable } from "@dnd-kit/core";
 import Image from "next/image";
 import type { PieceColor, PieceType, Square } from "@royalchess/shared";
+import type { CSSProperties, ReactElement } from "react";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
 
@@ -11,6 +12,7 @@ export interface ChessPieceProps {
   readonly type: PieceType;
   readonly color: PieceColor;
   readonly theme?: string;
+  readonly pieceAnimationsEnabled?: boolean;
   readonly disabled: boolean;
 }
 
@@ -19,8 +21,9 @@ export function ChessPiece({
   type,
   color,
   theme = "classic",
+  pieceAnimationsEnabled = true,
   disabled,
-}: ChessPieceProps): React.ReactElement {
+}: ChessPieceProps): ReactElement {
   const id = `piece-${square}`;
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id,
@@ -28,7 +31,7 @@ export function ChessPiece({
     disabled,
   });
 
-  const style: React.CSSProperties = {
+  const style: CSSProperties = {
     transform: CSS.Translate.toString(transform),
     opacity: isDragging ? 0.25 : 1,
     zIndex: isDragging ? 50 : 1,
@@ -47,7 +50,8 @@ export function ChessPiece({
       {...attributes}
       disabled={disabled}
       className={cn(
-        "piece-transition relative flex size-full items-center justify-center bg-transparent p-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-royal-gold/80",
+        pieceAnimationsEnabled && "piece-transition",
+        "relative flex size-full items-center justify-center bg-transparent p-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-royal-gold/80",
         disabled && "cursor-default opacity-90",
         !disabled && "cursor-grab active:cursor-grabbing",
       )}

@@ -46,6 +46,8 @@ model User {
   username      String          @unique @db.VarChar(20)
   passwordHash  String?
   avatarUrl     String?
+  /** Préférences UI / jeu (schéma Zod `UserPreferences` côté appli). */
+  preferences   Json?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   isActive      Boolean         @default(true)

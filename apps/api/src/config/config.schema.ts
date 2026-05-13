@@ -23,6 +23,10 @@ const envSchema = z
     GOOGLE_CALLBACK_URL: z.string().url().optional().default("http://localhost:3001/auth/google/callback"),
     CORS_ORIGIN: z.string().min(1),
     FRONTEND_URL: z.string().url(),
+    /** Base publique de l’API (avatars, liens absolus). Défaut dev : port API. */
+    API_PUBLIC_URL: z.string().url().default("http://localhost:3001"),
+    /** Répertoire d’écriture des avatars (relatif au cwd de l’API si non absolu). */
+    AVATAR_UPLOAD_DIR: z.string().min(1).default("uploads/avatars"),
     REFRESH_COOKIE_NAME: z.string().min(1).default("royal_refresh"),
     INTERNAL_AUTH_BRIDGE_SECRET: z.string().min(16).optional(),
   })

@@ -10,3 +10,5 @@ export * from "./types/matchmaking.types";
 export * from "./types/game.types";
 export * from "./types/socket.types";
 export * from "./types/user.types";
+export * from "./types/user-preferences.types";
+export * from "./schemas/user-preferences.schema";

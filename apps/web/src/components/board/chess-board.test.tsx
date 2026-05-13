@@ -47,7 +47,7 @@ describe("ChessBoard", () => {
       chatMessages: [],
     });
     useGameStore.getState().setGameState(baseGameState(), "w1");
-    useUiStore.setState({ soundEnabled: false });
+    useUiStore.setState({ soundEnabled: false, showLegalMoves: true });
   });
 
   it("sélectionne une pièce et affiche les cases légales", async () => {

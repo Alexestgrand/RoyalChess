@@ -231,6 +231,119 @@ export class GamesRepository {
   }
 
   /**
+   * Agrégation légère pour le profil public : parties avec deux joueurs et
+   * statut terminal. Les victoires / défaites ne comptent que `COMPLETED`
+   * (spécification produit) ; les nulles incluent `DRAW` et `winner === DRAW`.
+   */
+  async aggregateTerminalStatsForUser(userId: string): Promise<{
+    totalGames: number;
+    wins: number;
+    losses: number;
+    draws: number;
+  }> {
+    const participant = { OR: [{ whitePlayerId: userId }, { blackPlayerId: userId }] };
+    const twoPlayers = { blackPlayerId: { not: null } };
+    const terminal = {
+      status: { in: [GameStatus.COMPLETED, GameStatus.DRAW, GameStatus.ABANDONED] },
+    };
+    const base = { AND: [participant, twoPlayers, terminal] };
+
+    const [totalGames, wins, losses, draws] = await Promise.all([
+      this.prisma.game.count({ where: base }),
+      this.prisma.game.count({
+        where: {
+          AND: [
+            participant,
+            twoPlayers,
+            { status: GameStatus.COMPLETED },
+            {
+              OR: [
+                { AND: [{ whitePlayerId: userId }, { winner: GameWinner.WHITE }] },
+                { AND: [{ blackPlayerId: userId }, { winner: GameWinner.BLACK }] },
+              ],
+            },
+          ],
+        },
+      }),
+      this.prisma.game.count({
+        where: {
+          AND: [
+            participant,
+            twoPlayers,
+            { status: GameStatus.COMPLETED },
+            {
+              OR: [
+                { AND: [{ whitePlayerId: userId }, { winner: GameWinner.BLACK }] },
+                { AND: [{ blackPlayerId: userId }, { winner: GameWinner.WHITE }] },
+              ],
+            },
+          ],
+        },
+      }),
+      this.prisma.game.count({
+        where: {
+          AND: [
+            participant,
+            twoPlayers,
+            terminal,
+            {
+              OR: [{ status: GameStatus.DRAW }, { winner: GameWinner.DRAW }],
+            },
+          ],
+        },
+      }),
+    ]);
+    return { totalGames, wins, losses, draws };
+  }
+
+  /**
+   * Dernières parties terminées avec rating « after » persisté pour le joueur,
+   * ordre chronologique croissant (pour graphiques).
+   */
+  async findEloHistoryPointsForUser(
+    userId: string,
+    timeControl: TimeControl,
+    limit: number,
+  ): Promise<
+    {
+      id: string;
+      endedAt: Date;
+      whitePlayerId: string;
+      whiteEloAfter: number | null;
+      blackEloAfter: number | null;
+      whitePlayer: { username: string };
+      blackPlayer: { username: string } | null;
+    }[]
+  > {
+    const safeLimit = Number.isFinite(limit) ? Math.min(50, Math.max(1, Math.floor(limit))) : 30;
+    const rows = await this.prisma.game.findMany({
+      where: {
+        timeControl,
+        status: { in: [GameStatus.COMPLETED, GameStatus.DRAW, GameStatus.ABANDONED] },
+        endedAt: { not: null },
+        blackPlayerId: { not: null },
+        OR: [
+          { AND: [{ whitePlayerId: userId }, { whiteEloAfter: { not: null } }] },
+          { AND: [{ blackPlayerId: userId }, { blackEloAfter: { not: null } }] },
+        ],
+      },
+      orderBy: { endedAt: "desc" },
+      take: safeLimit,
+      select: {
+        id: true,
+        endedAt: true,
+        whitePlayerId: true,
+        whiteEloAfter: true,
+        blackEloAfter: true,
+        whitePlayer: { select: { username: true } },
+        blackPlayer: { select: { username: true } },
+      },
+    });
+    const withDates = rows.filter((r): r is typeof r & { endedAt: Date } => r.endedAt !== null);
+    return [...withDates].reverse();
+  }
+
+  /**
    * Variante "profil public" : inclut les deux joueurs pour permettre au
    * client (page profil `/profile/[username]`) d'afficher l'adversaire sans
    * round-trip supplémentaire. Toujours paginée + bornée.

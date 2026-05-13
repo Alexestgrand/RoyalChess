@@ -2,6 +2,7 @@
 
 import type { MoveInput, PieceColor } from "@royalchess/shared";
 import Image from "next/image";
+import type { ReactElement } from "react";
 import {
   Dialog,
   DialogContent,
@@ -10,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { useUiStore } from "@/stores/ui.store";
 
 const OPTIONS: readonly { promotion: NonNullable<MoveInput["promotion"]>; label: string; file: string }[] = [
   { promotion: "q", label: "Dame", file: "Q" },
@@ -25,7 +27,8 @@ export interface PromotionModalProps {
   readonly onCancel: () => void;
 }
 
-export function PromotionModal({ open, color, onPick, onCancel }: PromotionModalProps): React.ReactElement {
+export function PromotionModal({ open, color, onPick, onCancel }: PromotionModalProps): ReactElement {
+  const pieceTheme = useUiStore((s) => s.pieceTheme);
   return (
     <Dialog
       open={open}
@@ -52,7 +55,7 @@ export function PromotionModal({ open, color, onPick, onCancel }: PromotionModal
               )}
             >
               <Image
-                src={`/pieces/classic/${color === "w" ? "w" : "b"}${o.file}.svg`}
+                src={`/pieces/${pieceTheme}/${color === "w" ? "w" : "b"}${o.file}.svg`}
                 alt=""
                 width={56}
                 height={56}

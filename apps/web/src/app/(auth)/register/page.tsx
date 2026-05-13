@@ -8,6 +8,7 @@ import {
 } from "@/lib/auth/password-strength";
 import { parseRegisterConflictField } from "@/lib/auth/register-conflict";
 import { registerFormSchema, type RegisterFormValues } from "@/lib/validators/auth-forms";
+import { USERNAME_LIVE_REGEX } from "@/lib/username-live-regex";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -15,8 +16,6 @@ import { signIn } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import type { ReactElement } from "react";
-
-const USERNAME_LIVE_REGEX = /^[a-zA-Z0-9_-]{3,20}$/;
 
 type UsernameAvail = "idle" | "pending" | "available" | "taken" | "error" | "invalid_query";
 

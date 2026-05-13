@@ -12,8 +12,12 @@
     --royal-ivory: #f0ead6;
     --royal-muted: #8a8a9a;
     --royal-danger: #e05252;
+    /* Thèmes d’échiquier : surchargés par `[data-board-theme]` (voir tailwind `royal-board-*`). */
     --royal-board-light: #f0d9b5;
     --royal-board-dark: #b58863;
+    --royal-board-selected: rgba(246, 246, 105, 0.5);
+    --royal-board-legal: rgba(0, 0, 0, 0.2);
+    --royal-analysis-accent: #c9a84c;
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
     --card: 222.2 84% 4.9%;
@@ -34,6 +38,47 @@
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
     --radius: 0.5rem;
+  }
+
+  [data-board-theme="royal-classic"] {
+    --royal-board-light: #f0d9b5;
+    --royal-board-dark: #b58863;
+    --royal-board-selected: rgba(246, 246, 105, 0.45);
+    --royal-board-legal: rgba(0, 0, 0, 0.22);
+  }
+
+  [data-board-theme="forest-stone"] {
+    --royal-board-light: #c8d9c4;
+    --royal-board-dark: #3f5a46;
+    --royal-board-selected: rgba(180, 220, 160, 0.55);
+    --royal-board-legal: rgba(0, 40, 0, 0.18);
+  }
+
+  [data-board-theme="midnight-blue"] {
+    --royal-board-light: #8fa8cc;
+    --royal-board-dark: #2a3f6b;
+    --royal-board-selected: rgba(147, 197, 253, 0.45);
+    --royal-board-legal: rgba(15, 23, 42, 0.25);
+  }
+
+  [data-board-theme="slate-marble"] {
+    --royal-board-light: #d1d5db;
+    --royal-board-dark: #4b5563;
+    --royal-board-selected: rgba(226, 232, 240, 0.5);
+    --royal-board-legal: rgba(15, 23, 42, 0.2);
+  }
+
+  [data-analysis-arrow="gold"] {
+    --royal-analysis-accent: #c9a84c;
+  }
+  [data-analysis-arrow="emerald"] {
+    --royal-analysis-accent: #34d399;
+  }
+  [data-analysis-arrow="cyan"] {
+    --royal-analysis-accent: #22d3ee;
+  }
+  [data-analysis-arrow="violet"] {
+    --royal-analysis-accent: #a78bfa;
   }
 }
 

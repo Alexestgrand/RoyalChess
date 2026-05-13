@@ -29,6 +29,23 @@ export class UsersRepository {
     return this.prisma.user.update({ where: { id }, data });
   }
 
+  updatePreferences(id: string, preferences: Prisma.InputJsonValue): Promise<User> {
+    return this.prisma.user.update({
+      where: { id },
+      data: { preferences },
+    });
+  }
+
+  async changePasswordAndRevokeRefreshTokens(userId: string, passwordHash: string): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: userId }, data: { passwordHash } }),
+      this.prisma.refreshToken.updateMany({
+        where: { userId, isRevoked: false },
+        data: { isRevoked: true },
+      }),
+    ]);
+  }
+
   async getUserStats(userId: string): Promise<{ gamesPlayed: number }> {
     const gamesPlayed = await this.prisma.game.count({
       where: { OR: [{ whitePlayerId: userId }, { blackPlayerId: userId }] },

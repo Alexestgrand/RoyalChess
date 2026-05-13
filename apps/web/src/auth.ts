@@ -185,7 +185,7 @@ export const authConfig = {
       : []),
   ],
   callbacks: {
-    async jwt({ token, user, account }) {
+    async jwt({ token, user, account, trigger, session }) {
       if (user) {
         token.userId = user.id;
         const access = (user as { accessToken?: string }).accessToken;
@@ -198,12 +198,28 @@ export const authConfig = {
             : typeof user.name === "string"
               ? user.name
               : undefined;
+        token.email = typeof user.email === "string" ? user.email : undefined;
+        const img = (user as { image?: string | null }).image;
+        token.picture = typeof img === "string" ? img : undefined;
         token.error = undefined;
       }
       if (account?.provider === "google" && account.id_token) {
         token.accessToken = account.id_token;
         token.userId = token.sub ?? undefined;
         token.accessTokenExpiresAt = decodeAccessTokenExpiry(account.id_token);
+      }
+
+      if (trigger === "update" && session && typeof session === "object") {
+        const s = session as Record<string, unknown>;
+        if (typeof s.picture === "string") {
+          token.picture = s.picture;
+        }
+        if (typeof s.email === "string") {
+          token.email = s.email;
+        }
+        if (typeof s.username === "string") {
+          token.username = s.username;
+        }
       }
 
       const exp = token.accessTokenExpiresAt;
@@ -240,6 +256,12 @@ export const authConfig = {
       session.user.id = (token.userId as string) ?? session.user.id ?? "";
       session.user.username =
         (token.username as string | undefined) ?? session.user.name ?? session.user.email?.split("@")[0] ?? "";
+      if (typeof token.email === "string") {
+        session.user.email = token.email;
+      }
+      if (typeof token.picture === "string") {
+        session.user.image = token.picture;
+      }
       session.accessToken = token.accessToken as string | undefined;
       if (token.error === "RefreshTokenError") {
         session.accessToken = undefined;

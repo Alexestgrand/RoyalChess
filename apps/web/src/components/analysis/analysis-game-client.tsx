@@ -52,7 +52,7 @@ export function AnalysisGameClient({ data, gameId }: Readonly<{ data: ParsedGame
           onMove={() => undefined}
         />
         {bestMove ? (
-          <p className="text-center font-mono text-sm text-royal-gold">
+          <p className="text-center font-mono text-sm" style={{ color: "var(--royal-analysis-accent)" }}>
             Meilleur coup (UCI) : <span className="text-royal-ivory">{bestMove}</span>
           </p>
         ) : null}

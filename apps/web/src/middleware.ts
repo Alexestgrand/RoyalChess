@@ -42,13 +42,18 @@ function buildCsp(nonce: string): string {
     ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`
     : `script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: 'nonce-${nonce}'`;
   const styleSrc = isProd ? "style-src 'self'" : "style-src 'self' 'unsafe-inline'";
+  // `img-src` doit inclure l'origin de l'API : les avatars sont servis sous
+  // `${api}/uploads/avatars/…` et seraient bloqués par la CSP sans cette
+  // autorisation explicite (l'origin de l'API est différent du host Next).
+  // Le `data:` autorise les fallbacks inline ; `blob:` autorise les URL
+  // d'objet locales utilisées pour la preview avant upload.
   return [
     "default-src 'self'",
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
     "object-src 'none'",
-    "img-src 'self' data: blob:",
+    `img-src 'self' data: blob: ${api}`,
     "font-src 'self' data:",
     styleSrc,
     scriptSrc,

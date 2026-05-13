@@ -91,6 +91,9 @@ export function ChessBoard({
   const optimisticLastMove = useGameStore((s) => s.optimisticLastMove);
   const rejectedMove = useGameStore((s) => s.rejectedMove);
   const soundEnabled = useUiStore((s) => s.soundEnabled);
+  const pieceTheme = useUiStore((s) => s.pieceTheme);
+  const showLegalMoves = useUiStore((s) => s.showLegalMoves);
+  const pieceAnimationsEnabled = useUiStore((s) => s.pieceAnimationsEnabled);
 
   const [manualFlip, setManualFlip] = useState(false);
   const [promotion, setPromotion] = useState<{
@@ -366,7 +369,7 @@ export function ChessBoard({
                   const isLight = (fl.charCodeAt(0) + rk) % 2 === 0;
                   const pc = squarePiece(sq);
                   const isSelected = selectedSquare === sq;
-                  const isLegal = legalMoves.includes(sq);
+                  const isLegal = showLegalMoves && legalMoves.includes(sq);
                   const isLast = !!lastMove && (lastMove.from === sq || lastMove.to === sq);
                   const premoveH = !!premove && (premove.from === sq || premove.to === sq);
                   const isRejectFlash =
@@ -388,8 +391,15 @@ export function ChessBoard({
                         onContextMenu={handleContextMenu}
                       >
                         {pc ? (
-                          <div className={kingShakeSq === sq ? "animate-king-shake" : undefined}>
-                            <ChessPiece square={sq} type={pc.type} color={pc.color} disabled={!canDrag} />
+                          <div className={pieceAnimationsEnabled && kingShakeSq === sq ? "animate-king-shake" : undefined}>
+                            <ChessPiece
+                              square={sq}
+                              type={pc.type}
+                              color={pc.color}
+                              theme={pieceTheme}
+                              pieceAnimationsEnabled={pieceAnimationsEnabled}
+                              disabled={!canDrag}
+                            />
                           </div>
                         ) : null}
                       </ChessSquare>
@@ -411,7 +421,14 @@ export function ChessBoard({
       <DragOverlay dropAnimation={null}>
         {dragPiece ? (
           <div className="size-16 opacity-90">
-            <ChessPiece square={dragPiece.square} type={dragPiece.type} color={dragPiece.color} disabled />
+            <ChessPiece
+              square={dragPiece.square}
+              type={dragPiece.type}
+              color={dragPiece.color}
+              theme={pieceTheme}
+              pieceAnimationsEnabled={pieceAnimationsEnabled}
+              disabled
+            />
           </div>
         ) : null}
       </DragOverlay>
