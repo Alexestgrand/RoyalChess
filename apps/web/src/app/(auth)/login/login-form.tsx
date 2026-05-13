@@ -13,10 +13,11 @@ import { loginFormSchema, type LoginFormValues } from "@/lib/validators/auth-for
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { signIn } from "next-auth/react";
-import { useCallback, useEffect, useState } from "react";
+import { signIn, getSession } from "next-auth/react";
+import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { useForm } from "react-hook-form";
-import type { ReactElement } from "react";
+import { toast } from "sonner";
+import { toastMessages } from "@/lib/toast-messages";
 
 const LOGIN_STORAGE_KEY = "royalchess_login_attempts_v1";
 const MAX_FAILURES = 5;
@@ -120,6 +121,13 @@ export function LoginForm(): ReactElement {
       }
       writeLockState({ failures: 0, lockedUntil: 0 });
       setLockState({ failures: 0, lockedUntil: 0 });
+      const s = await getSession();
+      const displayName =
+        (typeof s?.user?.username === "string" && s.user.username.length > 0 ? s.user.username : null) ??
+        (typeof s?.user?.name === "string" && s.user.name.length > 0 ? s.user.name : null) ??
+        (typeof s?.user?.email === "string" ? s.user.email.split("@")[0] : null) ??
+        "joueur";
+      toast.success(toastMessages.loginWelcome(displayName), { duration: 3000 });
       const target = safeCallbackPath(callbackParam, window.location.origin);
       router.replace(target);
       router.refresh();

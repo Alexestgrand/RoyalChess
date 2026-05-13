@@ -8,7 +8,9 @@ import type { Socket } from "socket.io-client";
 import { gameOverPayloadSchema } from "@/lib/schemas/game-over-payload.schema";
 import { moveRejectedPayloadSchema } from "@/lib/schemas/move-rejected-payload.schema";
 import { disconnectGameSocket, getGameSocket } from "@/lib/socket-client";
+import { TOAST_IDS, toastMessages } from "@/lib/toast-messages";
 import { useGameStore } from "@/stores/game.store";
+import { toast } from "sonner";
 
 export interface UseGameSocketApi {
   readonly sendMove: (move: MoveInput) => void;
@@ -132,11 +134,20 @@ export function useGameSocket(gameId: string | null): UseGameSocketApi {
       setOpponentDisconnected(null);
     };
 
+    const onDisconnect = (): void => {
+      toast.error(toastMessages.socketOffline, { id: TOAST_IDS.socketOffline, duration: Infinity });
+    };
+    const onConnect = (): void => {
+      toast.dismiss(TOAST_IDS.socketOffline);
+    };
+
     void getGameSocket(gameId).then((s) => {
       if (cancelled) {
         return;
       }
       activeSocket = s;
+      s.on("disconnect", onDisconnect);
+      s.on("connect", onConnect);
       s.on(SocketEvent.GAME_STATE, onState);
       s.on(SocketEvent.CHAT_MESSAGE, onChat);
       s.on(SocketEvent.GAME_OVER, onOver);
@@ -150,6 +161,8 @@ export function useGameSocket(gameId: string | null): UseGameSocketApi {
     return () => {
       cancelled = true;
       if (activeSocket) {
+        activeSocket.off("disconnect", onDisconnect);
+        activeSocket.off("connect", onConnect);
         activeSocket.off(SocketEvent.GAME_STATE, onState);
         activeSocket.off(SocketEvent.CHAT_MESSAGE, onChat);
         activeSocket.off(SocketEvent.GAME_OVER, onOver);

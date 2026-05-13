@@ -111,6 +111,11 @@ export function CreateGameDialog(): React.ReactElement {
         return;
       }
       setInviteUrl(data.inviteUrl);
+      try {
+        sessionStorage.setItem(`royalchess_invite_${data.gameId}`, data.inviteUrl);
+      } catch {
+        /* quota / mode privé : le bouton copier en salle de jeu peut rester vide */
+      }
       // Copie automatique du lien (best-effort : `navigator.clipboard` peut
       // échouer en l'absence de permission ; on ne bloque pas la suite).
       let copied = false;

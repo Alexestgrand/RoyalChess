@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { ReactElement } from "react";
 import { formatEndReason } from "@/lib/game-end-reason-labels";
+import { EmptyChessBoard } from "@/components/shared/empty-chess-board";
 
 // ─── Labels ──────────────────────────────────────────────────────────────────
 
@@ -271,9 +272,10 @@ export default async function ProfilePage({
 
         {items.length === 0 ? (
           <div className="rounded-xl border border-royal-surface-elevated bg-royal-surface/80 p-8 text-center">
-            <p className="text-royal-muted">Aucune partie jouée encore. Lance ta première partie !</p>
+            <EmptyChessBoard />
+            <p className="mt-4 text-royal-muted">Aucune partie jouée. Lance ton premier défi !</p>
             <Link
-              href="/play"
+              href="/"
               className="mt-4 inline-flex items-center rounded-lg border border-royal-gold/40 bg-royal-surface px-4 py-2 text-sm font-medium text-royal-gold transition hover:border-royal-gold hover:bg-royal-surface-elevated"
             >
               Démarrer

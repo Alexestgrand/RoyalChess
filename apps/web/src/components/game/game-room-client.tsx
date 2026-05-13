@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
+import { toast } from "sonner";
 import { GameOverModal } from "@/components/game/game-over-modal";
 
 // Le board fait du drag-n-drop (`@dnd-kit`), joue des sons et dépend du
@@ -27,7 +28,10 @@ import { GameOverBanner } from "@/components/game/game-over-banner";
 import { useGameSocket } from "@/hooks/use-game-socket";
 import { usePremove } from "@/hooks/use-premove";
 import { useGameStore, type GameOverPayload } from "@/stores/game.store";
+import { useUiStore } from "@/stores/ui.store";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { toastMessages } from "@/lib/toast-messages";
 
 export interface GameRoomClientProps {
   readonly gameId: string;
@@ -68,7 +72,16 @@ export function GameRoomClient({
   // n'ouvre pas le socket : sinon `verifyParticipant` rejette la connexion
   // pour un utilisateur qui n'est pas encore enregistré comme joueur.
   const [joinReady, setJoinReady] = useState<boolean>(inviteCode === null);
+  const [inviteShareUrl, setInviteShareUrl] = useState<string | null>(null);
   const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, "");
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const raw = sessionStorage.getItem(`royalchess_invite_${gameId}`);
+    setInviteShareUrl(typeof raw === "string" && raw.length > 0 ? raw : null);
+  }, [gameId]);
 
   useEffect(() => {
     if (joinReady || inviteCode === null) {
@@ -133,6 +146,16 @@ export function GameRoomClient({
     }
   }, [initialSnapshot, session?.user?.id, setGameState]);
 
+  const premovesEnabled = useUiStore((s) => s.premovesEnabled);
+
+  useEffect(() => {
+    if (premovesEnabled) {
+      return;
+    }
+    useGameStore.getState().setPremove(null);
+    cancelPremove();
+  }, [premovesEnabled, cancelPremove]);
+
   const onQueuePremove = useCallback(
     (m: MoveInput): void => {
       useGameStore.getState().setPremove(m);
@@ -156,6 +179,21 @@ export function GameRoomClient({
   // et l'échiquier doit être interactif.
   const waiting = gameState?.status === "waiting";
   const connecting = !gameState;
+  const isHostWaiting =
+    waiting &&
+    gameState &&
+    session?.user?.id === gameState.whitePlayer.userId &&
+    typeof inviteShareUrl === "string" &&
+    inviteShareUrl.length > 0;
+
+  const onCopyInvite = useCallback((): void => {
+    if (!inviteShareUrl) {
+      return;
+    }
+    void navigator.clipboard.writeText(inviteShareUrl).then(() => {
+      toast.success(toastMessages.inviteLinkCopied, { duration: 2000 });
+    });
+  }, [inviteShareUrl]);
   // `gameState.status` reste sur `completed` / `abandoned` même après que
   // l'utilisateur a fermé le modal `GameOverModal` (le store `gameOver` lui
   // a été remis à null). On utilise donc le `status` du board comme source
@@ -197,10 +235,15 @@ export function GameRoomClient({
       <GameOverModal onNewGame={handleNewGame} onAnalyze={handleAnalyze} onRematch={handleRematch} />
       <div className="relative flex flex-1 flex-col items-center justify-center gap-3 lg:min-h-0">
         {connecting || waiting ? (
-          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-royal-bg/80 backdrop-blur-sm">
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 rounded-xl bg-royal-bg/80 px-4 text-center backdrop-blur-sm">
             <p className="font-display text-lg text-royal-ivory">
               {connecting ? "Connexion à la partie…" : "En attente de l&apos;adversaire…"}
             </p>
+            {isHostWaiting ? (
+              <Button type="button" variant="royal" size="sm" onClick={onCopyInvite}>
+                Copier le lien d&apos;invitation
+              </Button>
+            ) : null}
           </div>
         ) : null}
         <div className="relative flex w-full max-w-[min(92vw,720px)] flex-1 flex-col items-center justify-center">
@@ -208,7 +251,7 @@ export function GameRoomClient({
             gameId={gameId}
             onMove={sendMove}
             onCancelPremove={onCancelPremove}
-            onQueuePremove={onQueuePremove}
+            onQueuePremove={premovesEnabled ? onQueuePremove : undefined}
           />
         </div>
         <OpponentStatusBanner />
