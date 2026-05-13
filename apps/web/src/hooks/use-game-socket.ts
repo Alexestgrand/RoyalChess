@@ -5,6 +5,7 @@ import { SocketEvent } from "@royalchess/shared";
 import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useRef } from "react";
 import type { Socket } from "socket.io-client";
+import { gameOverPayloadSchema } from "@/lib/schemas/game-over-payload.schema";
 import { moveRejectedPayloadSchema } from "@/lib/schemas/move-rejected-payload.schema";
 import { disconnectGameSocket, getGameSocket } from "@/lib/socket-client";
 import { useGameStore } from "@/stores/game.store";
@@ -62,11 +63,30 @@ export function useGameSocket(gameId: string | null): UseGameSocketApi {
       appendChatMessage(payload as ChatMessage);
     };
     const onOver = (payload: unknown): void => {
-      const p = payload as { result?: "white" | "black" | "draw"; reason?: string; eloDelta?: number };
+      const parsed = gameOverPayloadSchema.safeParse(payload);
+      const p = parsed.success ? parsed.data : {};
+      const myId = myIdRef.current;
+      const gs = useGameStore.getState().gameState;
+      const myColor: "w" | "b" | null =
+        gs && myId
+          ? gs.whitePlayer.userId === myId
+            ? "w"
+            : gs.blackPlayer.userId === myId
+              ? "b"
+              : null
+          : null;
+      const myDelta = myColor === "w" ? p.whiteEloChange : myColor === "b" ? p.blackEloChange : undefined;
+      const myAfter = myColor === "w" ? p.whiteEloAfter : myColor === "b" ? p.blackEloAfter : undefined;
+      const oppSide = myColor === "w" ? p.opponentInfo?.black : myColor === "b" ? p.opponentInfo?.white : undefined;
       setGameOver({
         result: p.result,
-        reason: typeof p.reason === "string" ? p.reason : undefined,
-        eloDelta: typeof p.eloDelta === "number" ? p.eloDelta : undefined,
+        reason: p.reason,
+        eloDelta: typeof myDelta === "number" ? myDelta : undefined,
+        newElo: typeof myAfter === "number" ? myAfter : undefined,
+        opponent: oppSide ? { username: oppSide.username, avatarUrl: oppSide.avatarUrl } : undefined,
+        timeControl: p.timeControl,
+        initialTime: p.initialTime,
+        increment: p.increment,
       });
     };
     const onMoveErr = (payload: unknown): void => {

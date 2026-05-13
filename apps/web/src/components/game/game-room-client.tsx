@@ -174,10 +174,27 @@ export function GameRoomClient({
   const handleAnalyze = useCallback((): void => {
     router.push(`/analysis/${gameId}`);
   }, [gameId, router]);
+  const handleRematch = useCallback((): void => {
+    const go = lastGameOverRef.current;
+    const tc = go?.timeControl;
+    const initial = go?.initialTime;
+    const inc = go?.increment;
+    if (!tc || initial == null || inc == null) {
+      router.push("/");
+      return;
+    }
+    const sp = new URLSearchParams({
+      tc,
+      initial: String(initial),
+      inc: String(inc),
+      auto: "1",
+    });
+    router.push(`/?${sp.toString()}`);
+  }, [router]);
 
   return (
     <div className="relative flex min-h-[calc(100dvh-5rem)] flex-col gap-4 lg:flex-row lg:items-stretch">
-      <GameOverModal onNewGame={handleNewGame} onAnalyze={handleAnalyze} />
+      <GameOverModal onNewGame={handleNewGame} onAnalyze={handleAnalyze} onRematch={handleRematch} />
       <div className="relative flex flex-1 flex-col items-center justify-center gap-3 lg:min-h-0">
         {connecting || waiting ? (
           <div className="absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-royal-bg/80 backdrop-blur-sm">

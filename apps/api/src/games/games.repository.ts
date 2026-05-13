@@ -2,23 +2,6 @@ import { Injectable } from "@nestjs/common";
 import { GameStatus, GameWinner, TimeControl, type Game, type Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 
-function matchTimeProfile(tc: TimeControl): { initialTime: number; increment: number } {
-  switch (tc) {
-    case TimeControl.BULLET:
-      return { initialTime: 120, increment: 1 };
-    case TimeControl.BLITZ:
-      return { initialTime: 300, increment: 2 };
-    case TimeControl.RAPID:
-      return { initialTime: 600, increment: 5 };
-    case TimeControl.CLASSICAL:
-      return { initialTime: 1800, increment: 30 };
-    case TimeControl.CORRESPONDENCE:
-      return { initialTime: 86_400, increment: 0 };
-    default:
-      return { initialTime: 600, increment: 0 };
-  }
-}
-
 const playerSelect = {
   id: true,
   username: true,
@@ -193,6 +176,11 @@ export class GamesRepository {
       pgn: string;
       fen: string | null;
       endedAt: Date;
+      endReason?: string | null;
+      whiteEloChange?: number | null;
+      blackEloChange?: number | null;
+      whiteEloAfter?: number | null;
+      blackEloAfter?: number | null;
     },
   ): Promise<Game> {
     return this.prisma.game.update({
@@ -203,6 +191,11 @@ export class GamesRepository {
         pgn: data.pgn,
         fen: data.fen,
         endedAt: data.endedAt,
+        ...(data.endReason !== undefined ? { endReason: data.endReason } : {}),
+        ...(data.whiteEloChange !== undefined ? { whiteEloChange: data.whiteEloChange } : {}),
+        ...(data.blackEloChange !== undefined ? { blackEloChange: data.blackEloChange } : {}),
+        ...(data.whiteEloAfter !== undefined ? { whiteEloAfter: data.whiteEloAfter } : {}),
+        ...(data.blackEloAfter !== undefined ? { blackEloAfter: data.blackEloAfter } : {}),
       },
     });
   }
@@ -231,6 +224,37 @@ export class GamesRepository {
         orderBy: { createdAt: "desc" },
         skip,
         take: safeLimit,
+      }),
+      this.prisma.game.count({ where }),
+    ]);
+    return { items, total, page: safePage, limit: safeLimit };
+  }
+
+  /**
+   * Variante "profil public" : inclut les deux joueurs pour permettre au
+   * client (page profil `/profile/[username]`) d'afficher l'adversaire sans
+   * round-trip supplémentaire. Toujours paginée + bornée.
+   */
+  async findPublicPaginatedForUser(
+    userId: string,
+    page: number,
+    limit: number,
+  ): Promise<{ items: GameWithPlayers[]; total: number; page: number; limit: number }> {
+    const safePage = Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1;
+    const safeLimit =
+      Number.isFinite(limit) && limit >= 1 ? Math.min(50, Math.floor(limit)) : 20;
+    const skip = (safePage - 1) * safeLimit;
+    const where = { OR: [{ whitePlayerId: userId }, { blackPlayerId: userId }] };
+    const [items, total] = await Promise.all([
+      this.prisma.game.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: safeLimit,
+        include: {
+          whitePlayer: { select: playerSelect },
+          blackPlayer: { select: playerSelect },
+        },
       }),
       this.prisma.game.count({ where }),
     ]);

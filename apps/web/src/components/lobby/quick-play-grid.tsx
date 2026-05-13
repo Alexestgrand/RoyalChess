@@ -3,7 +3,8 @@
 import { MATCHMAKING_QUEUE_PRESETS } from "@royalchess/shared";
 import type { MatchmakingQueuePreset } from "@royalchess/shared";
 import { Clock, Loader2, X } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useEffect, type ReactElement } from "react";
+import { useSearchParams } from "next/navigation";
 import { formatMatchmakingWait, useMatchmaking } from "@/hooks/use-matchmaking";
 import { cn } from "@/lib/utils";
 
@@ -26,8 +27,35 @@ function samePreset(a: MatchmakingQueuePreset | null, b: MatchmakingQueuePreset)
   return a !== null && a.timeControl === b.timeControl && a.initialTime === b.initialTime && a.increment === b.increment;
 }
 
-export function QuickPlayGrid(): React.ReactElement {
+export function QuickPlayGrid(): ReactElement {
   const mm = useMatchmaking();
+  const searchParams = useSearchParams();
+
+  // Auto-join quand on arrive depuis le bouton "Rejouer" avec ?auto=1.
+  // On recherche le preset correspondant parmi les presets officiels ;
+  // si aucun ne correspond exactement, on ne rejoint pas automatiquement
+  // (évite de lancer une file invalide côté serveur).
+  useEffect(() => {
+    if (searchParams.get("auto") !== "1") {
+      return;
+    }
+    const tc = searchParams.get("tc");
+    const initial = Number(searchParams.get("initial") ?? "");
+    const inc = Number(searchParams.get("inc") ?? "");
+    if (!tc || !Number.isFinite(initial) || !Number.isFinite(inc)) {
+      return;
+    }
+    const preset = MATCHMAKING_QUEUE_PRESETS.find(
+      (p) => p.timeControl === tc && p.initialTime === initial && p.increment === inc,
+    );
+    if (!preset) {
+      return;
+    }
+    mm.joinQueue(preset);
+    // On ne liste pas `mm` en dépendance pour éviter une boucle infinie ;
+    // l'auto-join ne doit se déclencher qu'une seule fois au mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onModeClick = useCallback(
     (preset: MatchmakingQueuePreset): void => {

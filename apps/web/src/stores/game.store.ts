@@ -4,7 +4,19 @@ import { create } from "zustand";
 export interface GameOverPayload {
   readonly result?: "white" | "black" | "draw";
   readonly reason?: string;
+  /** Delta ELO du joueur courant uniquement (filtré dans le hook). */
   readonly eloDelta?: number;
+  /** Nouveau rating absolu du joueur courant après la partie. */
+  readonly newElo?: number;
+  /** Pseudo + avatar de l'adversaire pour l'écran de fin. */
+  readonly opponent?: {
+    readonly username: string;
+    readonly avatarUrl: string | null;
+  };
+  /** Time control pour le bouton Rejouer. */
+  readonly timeControl?: "BULLET" | "BLITZ" | "RAPID" | "CLASSICAL" | "CORRESPONDENCE";
+  readonly initialTime?: number;
+  readonly increment?: number;
 }
 
 /** Joueur déconnecté temporairement (événement serveur `opponent_disconnected`). */

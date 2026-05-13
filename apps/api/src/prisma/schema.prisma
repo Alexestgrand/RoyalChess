@@ -113,5 +113,14 @@ model Game {
   fen            String?
   startedAt      DateTime?
   endedAt        DateTime?
+  // Champs ajoutés par la migration `add_game_end_reason_and_elo_deltas`.
+  // `endReason` est volontairement typé `String?` pour pouvoir évoluer sans
+  // nouvelle migration ; les valeurs autorisées sont définies dans
+  // `game-session/game-end.types.ts` (constante `EndReason`).
+  endReason      String?
+  whiteEloChange Int?
+  blackEloChange Int?
+  whiteEloAfter  Int?
+  blackEloAfter  Int?
   createdAt      DateTime     @default(now())
 }

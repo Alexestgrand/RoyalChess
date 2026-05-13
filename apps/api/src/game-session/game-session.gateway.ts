@@ -152,7 +152,11 @@ export class GameSessionGateway
     }
     this.server.to(room).emit(SocketEvent.GAME_STATE, result.state);
     if (result.finished) {
-      this.server.to(room).emit(SocketEvent.GAME_OVER, { result: result.result });
+      // `gameOverPayload` est défini par `persistFinishedGame` ; on ne
+      // fallback sur `{ result }` que pour les chemins legacy ou en cas
+      // de skip idempotent (auquel cas `finished` ne devrait pas être true).
+      const payload = result.gameOverPayload ?? { result: result.result };
+      this.server.to(room).emit(SocketEvent.GAME_OVER, payload);
     }
   }
 
@@ -278,7 +282,8 @@ export class GameSessionGateway
     }
     this.server.to(room).emit(SocketEvent.GAME_STATE, result.state);
     if (result.finished) {
-      this.server.to(room).emit(SocketEvent.GAME_OVER, { result: result.result });
+      const payload = result.gameOverPayload ?? { result: result.result };
+      this.server.to(room).emit(SocketEvent.GAME_OVER, payload);
     }
   }
 
@@ -299,7 +304,8 @@ export class GameSessionGateway
     const room = gameSocketRoom(gameId);
     this.server.to(room).emit(SocketEvent.GAME_STATE, result.state);
     if (result.finished) {
-      this.server.to(room).emit(SocketEvent.GAME_OVER, { result: result.result });
+      const payload = result.gameOverPayload ?? { result: result.result };
+      this.server.to(room).emit(SocketEvent.GAME_OVER, payload);
     }
   }
 }

@@ -47,6 +47,19 @@ export class UsersController {
     return this.users.updateProfile(userId, body);
   }
 
+  // Important : déclarer cette route AVANT `:username` pour que NestJS
+  // matche `/users/foo/games` sur ce handler et non sur `getByUsername`.
+  @Get(":username/games")
+  publicGames(
+    @Param("username") username: string,
+    @Query("page") pageRaw?: string,
+    @Query("limit") limitRaw?: string,
+  ) {
+    const page = Number(pageRaw ?? "1");
+    const limit = Number(limitRaw ?? "20");
+    return this.users.getPublicGameHistory(username, page, limit);
+  }
+
   @Get(":username")
   getByUsername(@Param("username") username: string) {
     return this.users.getPublicProfile(username);

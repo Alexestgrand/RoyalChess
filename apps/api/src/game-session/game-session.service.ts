@@ -17,9 +17,28 @@ import { AntiCheatService } from "./anti-cheat.service";
 import { computeClockTimeoutLoserId } from "./game-session-clock-timeout.util";
 import { GameSessionRepository } from "./game-session.repository";
 import type { GameSessionRecord } from "./game-session.types";
+import {
+  buildGameOverPayload,
+  EndReason,
+  mapDrawEndReason,
+  type FinalizedGameMeta,
+  type GameOverPayload,
+  type OpponentInfo,
+} from "./game-end.types";
 
 export type MoveHandleResult =
-  | { readonly ok: true; readonly state: GameState; readonly finished: boolean; readonly result?: SharedGameResult }
+  | {
+      readonly ok: true;
+      readonly state: GameState;
+      readonly finished: boolean;
+      readonly result?: SharedGameResult;
+      /**
+       * Payload `GAME_OVER` enrichi calculé par `persistFinishedGame`. Permet
+       * au gateway d'émettre l'événement avec ELO / adversaire / raison sans
+       * re-requêter la base. Présent uniquement lorsque `finished === true`.
+       */
+      readonly gameOverPayload?: GameOverPayload;
+    }
   | { readonly ok: false; readonly error: string };
 
 /** Placeholder Redis tant que l'adversaire d'une partie privée n'a pas rejoint. */
@@ -289,7 +308,11 @@ export class GameSessionService {
     return session.status === "waiting" ? "waiting" : "active";
   }
 
-  async finalizeGame(gameId: string, result: SharedGameResult): Promise<void> {
+  async finalizeGame(
+    gameId: string,
+    result: SharedGameResult,
+    endReason: EndReason = EndReason.ABANDON,
+  ): Promise<void> {
     const row = await this.games.findByIdWithPlayers(gameId);
     const session = await this.repo.getSession(gameId);
     if (!row || !session) {
@@ -299,7 +322,7 @@ export class GameSessionService {
       this.log.warn({ gameId, result }, "finalizeGame_idempotent_skip");
       return;
     }
-    void (await this.persistFinishedGame(gameId, result, row, session));
+    void (await this.persistFinishedGame(gameId, result, endReason, row, session));
   }
 
   async handleMove(gameId: string, userId: string, rawMove: unknown): Promise<MoveHandleResult> {
@@ -349,8 +372,14 @@ export class GameSessionService {
       const moverRemaining = session.currentTurn === "w" ? whiteT : blackT;
       if (moverRemaining <= 0) {
         const winner: SharedGameResult = session.currentTurn === "w" ? "black" : "white";
-        const skipped = await this.persistFinishedGame(gameId, winner, row, session);
-        if (skipped) {
+        const persistResult = await this.persistFinishedGame(
+          gameId,
+          winner,
+          EndReason.TIMEOUT,
+          row,
+          session,
+        );
+        if (persistResult.skipped) {
           return { ok: false, error: "partie_terminee" };
         }
         const after = await this.games.findByIdWithPlayers(gameId);
@@ -358,7 +387,13 @@ export class GameSessionService {
           ? this.buildGameState(gameId, session, after, "completed", winner, null)
           : null;
         return state
-          ? { ok: true, state, finished: true, result: winner }
+          ? {
+              ok: true,
+              state,
+              finished: true,
+              result: winner,
+              gameOverPayload: persistResult.payload,
+            }
           : { ok: false, error: "finalisation_incomplete" };
       }
       const applied = this.engine.validateAndApplyMove(session.fen, move);
@@ -396,25 +431,41 @@ export class GameSessionService {
       session = nextSession;
       let finished = false;
       let result: SharedGameResult | undefined;
+      let gameOverPayload: GameOverPayload | undefined;
       if (mr.isCheckmate) {
         finished = true;
         result = nextTurn === "w" ? "black" : "white";
-        const skippedMate = await this.persistFinishedGame(gameId, result, row, session);
-        if (skippedMate) {
+        const persistResult = await this.persistFinishedGame(
+          gameId,
+          result,
+          EndReason.CHECKMATE,
+          row,
+          session,
+        );
+        if (persistResult.skipped) {
           return { ok: false, error: "partie_terminee" };
         }
+        gameOverPayload = persistResult.payload;
       } else if (mr.isDraw) {
         finished = true;
         result = "draw";
-        const skippedDraw = await this.persistFinishedGame(gameId, "draw", row, session);
-        if (skippedDraw) {
+        const drawReason = mapDrawEndReason(mr.drawReason);
+        const persistResult = await this.persistFinishedGame(
+          gameId,
+          "draw",
+          drawReason,
+          row,
+          session,
+        );
+        if (persistResult.skipped) {
           return { ok: false, error: "partie_terminee" };
         }
+        gameOverPayload = persistResult.payload;
       }
       const freshRow = await this.games.findByIdWithPlayers(gameId);
       const status: GameState["status"] = finished ? "completed" : "active";
       const state = this.buildGameState(gameId, session, freshRow ?? row, status, result, move);
-      return { ok: true, state, finished, result };
+      return { ok: true, state, finished, result, gameOverPayload };
     } catch (err: unknown) {
       const e = err instanceof Error ? err : new Error(String(err));
       this.log.error({ err: e, gameId, userId }, "handleMove_uncaught");
@@ -435,8 +486,14 @@ export class GameSessionService {
       return { ok: false, error: "non_joueur" };
     }
     const winner: SharedGameResult = userId === session.whitePlayerId ? "black" : "white";
-    const skippedTimeout = await this.persistFinishedGame(gameId, winner, row, session);
-    if (skippedTimeout) {
+    const persistResult = await this.persistFinishedGame(
+      gameId,
+      winner,
+      EndReason.TIMEOUT,
+      row,
+      session,
+    );
+    if (persistResult.skipped) {
       return { ok: false, error: "partie_terminee" };
     }
     const after = await this.games.findByIdWithPlayers(gameId);
@@ -449,12 +506,21 @@ export class GameSessionService {
       pgn: after.pgn,
     };
     const state = this.buildGameState(gameId, merged, after, "completed", winner, null);
+    // `handleTimeout` est invoqué par un `@Interval` (sans gateway dans le
+    // pipeline d'appel) : il doit donc émettre lui-même `GAME_STATE` puis
+    // `GAME_OVER` avec le payload enrichi.
     await this.broadcastStateToRoom(gameId, state);
     const srv = this.broadcastServer;
     if (srv) {
-      srv.to(gameSocketRoom(gameId)).emit(SocketEvent.GAME_OVER, { result: winner });
+      srv.to(gameSocketRoom(gameId)).emit(SocketEvent.GAME_OVER, persistResult.payload);
     }
-    return { ok: true, state, finished: true, result: winner };
+    return {
+      ok: true,
+      state,
+      finished: true,
+      result: winner,
+      gameOverPayload: persistResult.payload,
+    };
   }
 
   async handleResign(gameId: string, userId: string): Promise<MoveHandleResult> {
@@ -470,15 +536,29 @@ export class GameSessionService {
       return { ok: false, error: "non_joueur" };
     }
     const winner: SharedGameResult = userId === session.whitePlayerId ? "black" : "white";
-    const skippedResign = await this.persistFinishedGame(gameId, winner, row, session);
-    if (skippedResign) {
+    const persistResult = await this.persistFinishedGame(
+      gameId,
+      winner,
+      EndReason.RESIGNATION,
+      row,
+      session,
+    );
+    if (persistResult.skipped) {
       return { ok: false, error: "partie_terminee" };
     }
     const after = await this.games.findByIdWithPlayers(gameId);
     const state = after
       ? this.buildGameState(gameId, session, after, "completed", winner, null)
       : null;
-    return state ? { ok: true, state, finished: true, result: winner } : { ok: false, error: "finalisation_incomplete" };
+    return state
+      ? {
+          ok: true,
+          state,
+          finished: true,
+          result: winner,
+          gameOverPayload: persistResult.payload,
+        }
+      : { ok: false, error: "finalisation_incomplete" };
   }
 
   async handleDrawOffer(gameId: string, userId: string): Promise<MoveHandleResult> {
@@ -526,8 +606,14 @@ export class GameSessionService {
     if (!opponentOffered) {
       return { ok: false, error: "pas_d_offre" };
     }
-    const skippedDrawAccept = await this.persistFinishedGame(gameId, "draw", row, session);
-    if (skippedDrawAccept) {
+    const persistResult = await this.persistFinishedGame(
+      gameId,
+      "draw",
+      EndReason.DRAW_AGREEMENT,
+      row,
+      session,
+    );
+    if (persistResult.skipped) {
       return { ok: false, error: "partie_terminee" };
     }
     const after = await this.games.findByIdWithPlayers(gameId);
@@ -541,7 +627,15 @@ export class GameSessionService {
           null,
         )
       : null;
-    return state ? { ok: true, state, finished: true, result: "draw" } : { ok: false, error: "finalisation_incomplete" };
+    return state
+      ? {
+          ok: true,
+          state,
+          finished: true,
+          result: "draw",
+          gameOverPayload: persistResult.payload,
+        }
+      : { ok: false, error: "finalisation_incomplete" };
   }
 
   private isTerminalGameRow(row: GameWithPlayers): boolean {
@@ -564,13 +658,29 @@ export class GameSessionService {
     }
   }
 
-  /** @returns `true` si la partie était déjà terminée (idempotence, pas d’Elo double). */
+  /**
+   * Pattern de finalisation idempotent :
+   *  1. Re-charge la partie pour détecter une finalisation concurrente (return skipped).
+   *  2. Persiste status / winner / pgn / fen / endedAt / endReason en une `UPDATE`.
+   *  3. Applique le calcul ELO (Glicko-2) et persiste les deltas / "after"
+   *     dans la même ligne `Game` via une seconde `UPDATE` (la transaction
+   *     atomique cross-tables `Game + EloRating` n'est pas faisable sans
+   *     refondre `EloService` ; on accepte donc le risque d'avoir une ligne
+   *     `Game` finalisée sans ELO en cas de crash entre les deux étapes,
+   *     ce qui est moins dommageable que l'inverse).
+   *  4. Nettoie la session Redis et les marqueurs `playingGame`.
+   *  5. Retourne le payload `GAME_OVER` enrichi.
+   *
+   * @returns `{ skipped: true }` si la partie était déjà terminée (idempotence,
+   *          pas de double ELO), sinon `{ skipped: false, payload }`.
+   */
   private async persistFinishedGame(
     gameId: string,
     result: SharedGameResult,
+    endReason: EndReason,
     _row: GameWithPlayers,
     session: GameSessionRecord,
-  ): Promise<boolean> {
+  ): Promise<{ skipped: true } | { skipped: false; payload: GameOverPayload }> {
     const latest = await this.games.findByIdWithPlayers(gameId);
     if (!latest) {
       this.log.warn({ gameId }, "persistFinishedGame_sans_partie");
@@ -578,12 +688,14 @@ export class GameSessionService {
     }
     if (this.isTerminalGameRow(latest)) {
       this.log.warn({ gameId, result }, "finalizeGame_idempotent_skip");
-      return true;
+      return { skipped: true };
     }
     const row = latest;
     const history = await this.repo.getFullMoveHistory(gameId);
     const pgn = this.buildPgn(row, history, result);
     const { prismaStatus, prismaWinner } = this.mapPrismaOutcome(result);
+    const opponentInfo = this.buildOpponentInfo(row);
+    let meta: FinalizedGameMeta;
     try {
       await this.games.finalizeGame(gameId, {
         status: prismaStatus,
@@ -591,8 +703,24 @@ export class GameSessionService {
         pgn,
         fen: session.fen,
         endedAt: new Date(),
+        endReason,
       });
-      await this.applyElo(row, result);
+      meta = await this.applyEloAndBuildMeta(row, result, endReason, opponentInfo);
+      // ELO calculé : on persiste les deltas / after dans la même ligne `Game`
+      // pour qu'ils soient lisibles depuis l'historique du profil sans
+      // requêter `EloRating` à chaque affichage.
+      await this.games.finalizeGame(gameId, {
+        status: prismaStatus,
+        winner: prismaWinner,
+        pgn,
+        fen: session.fen,
+        endedAt: new Date(),
+        endReason,
+        whiteEloChange: meta.whiteEloChange,
+        blackEloChange: meta.blackEloChange,
+        whiteEloAfter: meta.whiteEloAfter,
+        blackEloAfter: meta.blackEloAfter,
+      });
     } catch (e) {
       this.log.error({ err: e, gameId }, "persistFinishedGame");
       throw e;
@@ -602,7 +730,7 @@ export class GameSessionService {
       await this.repo.clearUserPlayingGame(row.blackPlayerId);
     }
     await this.repo.deleteSession(gameId);
-    return false;
+    return { skipped: false, payload: buildGameOverPayload(result, meta) };
   }
 
   private mapPrismaOutcome(result: SharedGameResult): {
@@ -618,15 +746,70 @@ export class GameSessionService {
     };
   }
 
-  private async applyElo(row: GameWithPlayers, result: SharedGameResult): Promise<void> {
+  /**
+   * Construit la base `OpponentInfo` (username + avatar). `ratingBefore`
+   * est initialisé à 0 ici puis patché par `applyEloAndBuildMeta` qui
+   * obtient la valeur exacte depuis `EloService.applyMatchResult`.
+   */
+  private buildOpponentInfo(row: GameWithPlayers): OpponentInfo {
+    return {
+      white: {
+        username: row.whitePlayer.username,
+        avatarUrl: row.whitePlayer.avatarUrl,
+        ratingBefore: 0,
+      },
+      black: {
+        username: row.blackPlayer?.username ?? "",
+        avatarUrl: row.blackPlayer?.avatarUrl ?? null,
+        ratingBefore: 0,
+      },
+    };
+  }
+
+  private async applyEloAndBuildMeta(
+    row: GameWithPlayers,
+    result: SharedGameResult,
+    endReason: EndReason,
+    opponentInfo: OpponentInfo,
+  ): Promise<FinalizedGameMeta> {
     const tc = row.timeControl as TimeControl;
-    if (result === "draw") {
-      await this.elo.calculateNewRatings(row.whitePlayerId, row.blackPlayerId!, true, tc);
-      return;
+    const blackId = row.blackPlayerId;
+    if (!blackId || !row.blackPlayer) {
+      // Cas pathologique : partie sans Black finalisée. On évite NPE en
+      // retournant un meta neutre (deltas à 0).
+      return {
+        endReason,
+        whiteEloAfter: 0,
+        blackEloAfter: 0,
+        whiteEloChange: 0,
+        blackEloChange: 0,
+        opponentInfo,
+        timeControl: tc,
+        initialTime: row.initialTime,
+        increment: row.increment,
+      };
     }
-    const winnerId = result === "white" ? row.whitePlayerId : row.blackPlayerId!;
-    const loserId = result === "white" ? row.blackPlayerId! : row.whitePlayerId;
-    await this.elo.calculateNewRatings(winnerId, loserId, false, tc);
+    const outcome = await this.elo.applyMatchResult({
+      whitePlayerId: row.whitePlayerId,
+      blackPlayerId: blackId,
+      result,
+      timeControl: tc,
+    });
+    const enrichedOpponentInfo: OpponentInfo = {
+      white: { ...opponentInfo.white, ratingBefore: outcome.white.before },
+      black: { ...opponentInfo.black, ratingBefore: outcome.black.before },
+    };
+    return {
+      endReason,
+      whiteEloAfter: outcome.white.after,
+      blackEloAfter: outcome.black.after,
+      whiteEloChange: outcome.white.delta,
+      blackEloChange: outcome.black.delta,
+      opponentInfo: enrichedOpponentInfo,
+      timeControl: tc,
+      initialTime: row.initialTime,
+      increment: row.increment,
+    };
   }
 
   private buildPgn(
