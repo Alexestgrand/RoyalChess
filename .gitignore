@@ -38,3 +38,7 @@ coverage
 
 package-lock.json
 *.pem
+
+# Runtime data : avatars uploadés par les utilisateurs en dev ; ce sont des
+# binaires régénérés à chaque upload, ils n'ont rien à faire dans git.
+apps/api/uploads/
