@@ -1,4 +1,4 @@
-import { UnauthorizedException } from "@nestjs/common";
+import { ConflictException, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcrypt";
@@ -17,7 +17,6 @@ jest.mock("bcrypt", () => ({
 describe("AuthService", () => {
   const prisma = {
     user: {
-      findFirst: jest.fn(),
       findUnique: jest.fn(),
     },
     eloRating: { createMany: jest.fn() },
@@ -85,7 +84,7 @@ describe("AuthService", () => {
   });
 
   it("register crée un compte et retourne une paire de jetons", async () => {
-    (prisma.user.findFirst as jest.Mock).mockResolvedValue(null);
+    (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce(null).mockResolvedValueOnce(null);
     const tokens = await service.register(registerDto);
     expect(tokens.accessToken).toBe("signed.jwt.token");
     expect(prisma.$transaction).toHaveBeenCalled();
@@ -93,8 +92,8 @@ describe("AuthService", () => {
   });
 
   it("register refuse un email ou pseudo déjà pris", async () => {
-    (prisma.user.findFirst as jest.Mock).mockResolvedValue({ id: "x" });
-    await expect(service.register(registerDto)).rejects.toBeInstanceOf(UnauthorizedException);
+    (prisma.user.findUnique as jest.Mock).mockResolvedValueOnce({ id: "x" });
+    await expect(service.register(registerDto)).rejects.toBeInstanceOf(ConflictException);
   });
 
   it("login réussit avec bons identifiants", async () => {

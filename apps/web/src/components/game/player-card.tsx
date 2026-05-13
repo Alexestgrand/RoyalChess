@@ -2,7 +2,7 @@
 
 import type { GameState } from "@royalchess/shared";
 import { Clock } from "lucide-react";
-import { useEffect, useRef, useState, type ReactElement } from "react";
+import { memo, useEffect, useRef, useState, type ReactElement } from "react";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { cn } from "@/lib/utils";
 
@@ -84,7 +84,7 @@ function useSmoothClock(
   return displayMs;
 }
 
-export function PlayerCard({
+const PlayerCardImpl = function PlayerCardImpl({
   username,
   avatarUrl,
   eloLabel = "—",
@@ -129,4 +129,6 @@ export function PlayerCard({
       </div>
     </div>
   );
-}
+};
+
+export const PlayerCard = memo(PlayerCardImpl);

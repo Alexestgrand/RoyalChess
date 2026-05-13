@@ -7,6 +7,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import { toast } from "sonner";
 import { GameOverModal } from "@/components/game/game-over-modal";
+import { PieceSvgPreload } from "@/components/game/piece-svg-preload";
 
 // Le board fait du drag-n-drop (`@dnd-kit`), joue des sons et dépend du
 // WebSocket : aucun bénéfice à le pré-rendre côté serveur. Le SSR provoque
@@ -232,6 +233,7 @@ export function GameRoomClient({
 
   return (
     <div className="relative flex min-h-[calc(100dvh-5rem)] flex-col gap-4">
+      <PieceSvgPreload />
       <GameOverModal onNewGame={handleNewGame} onAnalyze={handleAnalyze} onRematch={handleRematch} />
       <div className="md:grid md:min-h-0 md:grid-cols-[minmax(0,1fr)_320px] md:items-stretch md:gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="relative flex min-h-0 flex-col items-center justify-center gap-3">

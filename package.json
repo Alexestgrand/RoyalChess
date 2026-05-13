@@ -7,7 +7,8 @@
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "lint": "turbo lint",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "audit:prod": "pnpm audit --prod --audit-level high"
   },
   "devDependencies": {
     "prettier": "^3.4.2",
@@ -18,5 +19,15 @@
   "engines": {
     "node": ">=20",
     "pnpm": ">=9"
+  },
+  "pnpm": {
+    "overrides": {
+      "lodash": ">=4.18.0",
+      "multer": ">=2.1.1",
+      "postcss": ">=8.5.10",
+      "tar": ">=7.5.8",
+      "uuid": "11.1.1",
+      "js-yaml": ">=4.1.1"
+    }
   }
 }

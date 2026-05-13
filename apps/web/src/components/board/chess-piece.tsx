@@ -3,7 +3,7 @@
 import { useDraggable } from "@dnd-kit/core";
 import Image from "next/image";
 import type { PieceColor, PieceType, Square } from "@royalchess/shared";
-import type { CSSProperties, ReactElement } from "react";
+import { memo, type CSSProperties, type ReactElement } from "react";
 import { CSS } from "@dnd-kit/utilities";
 import { formatPieceFrenchLabel } from "@/lib/aria-piece-label";
 import { cn } from "@/lib/utils";
@@ -17,7 +17,7 @@ export interface ChessPieceProps {
   readonly disabled: boolean;
 }
 
-export function ChessPiece({
+const ChessPieceImpl = function ChessPieceImpl({
   square,
   type,
   color,
@@ -61,4 +61,6 @@ export function ChessPiece({
       <Image src={src} alt="" width={72} height={72} className="pointer-events-none size-[82%] select-none object-contain drop-shadow-md" unoptimized />
     </button>
   );
-}
+};
+
+export const ChessPiece = memo(ChessPieceImpl);

@@ -1,6 +1,6 @@
 "use client";
 
-import type { ParsedGame } from "@royalchess/shared";
+import type { MoveInput, ParsedGame } from "@royalchess/shared";
 import { Chess } from "chess.js";
 import { ChevronFirst, ChevronLast, ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
@@ -10,6 +10,10 @@ import { Slider } from "@/components/ui/slider";
 import { useStockfish } from "@/hooks/use-stockfish";
 
 const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+function noopOnMove(_move: MoveInput): void {
+  void _move;
+}
 
 function buildFens(moves: readonly string[]): string[] {
   const c = Chess();
@@ -49,7 +53,7 @@ export function AnalysisGameClient({ data, gameId }: Readonly<{ data: ParsedGame
           analysisMode
           controlledFen={fen}
           interactive={false}
-          onMove={() => undefined}
+          onMove={noopOnMove}
         />
         {bestMove ? (
           <p className="text-center font-mono text-sm" style={{ color: "var(--royal-analysis-accent)" }}>

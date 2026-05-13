@@ -8,13 +8,21 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { Chess, FLAGS, type ChessInstance, type Move, type Square as JsSquare } from "chess.js";
 import type { MoveInput, PieceColor, PieceType, Square } from "@royalchess/shared";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { useShallow } from "zustand/shallow";
 import { ChessPiece } from "@/components/board/chess-piece";
 import { ChessSquare } from "@/components/board/chess-square";
+import type {
+  ChessBoardGameSlice,
+  ChessBoardProps,
+  ChessBoardUiSlice,
+  ChessBoardViewProps,
+} from "@/components/board/chess-board.types";
 import { PromotionModal } from "@/components/board/promotion-modal";
 import { formatPieceFrenchLabel, formatSquareAriaLabel } from "@/lib/aria-piece-label";
 import { displayFiles, displayRanks, squareAt } from "@/lib/board-display";
@@ -22,9 +30,12 @@ import { pseudoLegalTargets } from "@/lib/premove-helpers";
 import { playChessSound } from "@/lib/chess-sounds";
 import { cn } from "@/lib/utils";
 import { useUiStore } from "@/stores/ui.store";
-import { useGameStore } from "@/stores/game.store";
+import { useGameStore, type RejectedMoveFlashState } from "@/stores/game.store";
 
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+type GameStoreSnapshot = ReturnType<typeof useGameStore.getState>;
+type UiStoreSnapshot = ReturnType<typeof useUiStore.getState>;
 
 function buildChess(fen: string): ChessInstance {
   const c = Chess();
@@ -59,19 +70,145 @@ function classifySound(last: Move): "capture" | "castle" | "move" {
   return "move";
 }
 
-export interface ChessBoardProps {
-  readonly gameId: string;
-  readonly analysisMode?: boolean;
-  /** FEN piloté localement (mode analyse / replay). */
-  readonly controlledFen?: string | null;
-  /** Désactive sélection et coups (affichage seul). */
-  readonly interactive?: boolean;
-  readonly onMove: (move: MoveInput) => void;
-  readonly onCancelPremove?: () => void;
-  readonly onQueuePremove?: (move: MoveInput) => void;
+function selectBoardGameSlice(s: GameStoreSnapshot): ChessBoardGameSlice {
+  return {
+    gameFen: s.gameState?.fen ?? null,
+    gameLastMove: s.gameState?.lastMove ?? null,
+    gameStatus: s.gameState?.status ?? null,
+    selectedSquare: s.selectedSquare,
+    legalMoves: s.legalMoves,
+    premove: s.premove,
+    myColor: s.myColor,
+    isMyTurn: s.isMyTurn,
+    moveError: s.moveError,
+    optimisticFen: s.optimisticFen,
+    optimisticLastMove: s.optimisticLastMove,
+    rejectedMove: s.rejectedMove,
+    setSelectedSquare: s.setSelectedSquare,
+    setLegalMoves: s.setLegalMoves,
+  };
 }
 
-export function ChessBoard({
+function selectBoardUiSlice(s: UiStoreSnapshot): ChessBoardUiSlice {
+  return {
+    soundEnabled: s.soundEnabled,
+    pieceTheme: s.pieceTheme,
+    showLegalMoves: s.showLegalMoves,
+    pieceAnimationsEnabled: s.pieceAnimationsEnabled,
+  };
+}
+
+function moveInputKey(m: MoveInput | null): string {
+  if (!m) {
+    return "";
+  }
+  return `${m.from}:${m.to}:${m.promotion ?? ""}`;
+}
+
+function rejectedFlashKey(r: RejectedMoveFlashState | null): string {
+  if (!r) {
+    return "";
+  }
+  return `${r.from}:${r.to}:${r.at}`;
+}
+
+function sortedLegalKey(moves: readonly Square[]): string {
+  return [...moves].sort().join(",");
+}
+
+function resolvedFen(
+  controlled: string | null | undefined,
+  optimistic: string | null,
+  game: string | null,
+): string {
+  const cf = controlled && controlled.length > 0 ? controlled : null;
+  return cf ?? optimistic ?? game ?? START_FEN;
+}
+
+function chessBoardViewPropsEqual(prev: ChessBoardViewProps, next: ChessBoardViewProps): boolean {
+  if (prev.gameId !== next.gameId) {
+    return false;
+  }
+  if (prev.analysisMode !== next.analysisMode) {
+    return false;
+  }
+  if (prev.controlledFen !== next.controlledFen) {
+    return false;
+  }
+  if (prev.interactive !== next.interactive) {
+    return false;
+  }
+  if (prev.onMove !== next.onMove) {
+    return false;
+  }
+  if (prev.onCancelPremove !== next.onCancelPremove) {
+    return false;
+  }
+  if (prev.onQueuePremove !== next.onQueuePremove) {
+    return false;
+  }
+
+  const fenA = resolvedFen(prev.controlledFen, prev.board.optimisticFen, prev.board.gameFen);
+  const fenB = resolvedFen(next.controlledFen, next.board.optimisticFen, next.board.gameFen);
+  if (fenA !== fenB) {
+    return false;
+  }
+
+  const lastA = prev.board.optimisticLastMove ?? prev.board.gameLastMove;
+  const lastB = next.board.optimisticLastMove ?? next.board.gameLastMove;
+  if (moveInputKey(lastA) !== moveInputKey(lastB)) {
+    return false;
+  }
+
+  const orientA = `${Boolean(prev.analysisMode)}:${prev.board.myColor ?? ""}`;
+  const orientB = `${Boolean(next.analysisMode)}:${next.board.myColor ?? ""}`;
+  if (orientA !== orientB) {
+    return false;
+  }
+
+  if (prev.board.selectedSquare !== next.board.selectedSquare) {
+    return false;
+  }
+  if (sortedLegalKey(prev.board.legalMoves) !== sortedLegalKey(next.board.legalMoves)) {
+    return false;
+  }
+  if (moveInputKey(prev.board.premove) !== moveInputKey(next.board.premove)) {
+    return false;
+  }
+  if (rejectedFlashKey(prev.board.rejectedMove) !== rejectedFlashKey(next.board.rejectedMove)) {
+    return false;
+  }
+
+  if (prev.board.myColor !== next.board.myColor) {
+    return false;
+  }
+  if (prev.board.isMyTurn !== next.board.isMyTurn) {
+    return false;
+  }
+  if (prev.board.moveError !== next.board.moveError) {
+    return false;
+  }
+  if (prev.board.gameStatus !== next.board.gameStatus) {
+    return false;
+  }
+
+  if (prev.ui.soundEnabled !== next.ui.soundEnabled) {
+    return false;
+  }
+  if (prev.ui.pieceTheme !== next.ui.pieceTheme) {
+    return false;
+  }
+  if (prev.ui.showLegalMoves !== next.ui.showLegalMoves) {
+    return false;
+  }
+  if (prev.ui.pieceAnimationsEnabled !== next.ui.pieceAnimationsEnabled) {
+    return false;
+  }
+
+  return true;
+}
+
+const ChessBoardView = memo(function ChessBoardViewImpl({
   gameId,
   analysisMode = false,
   controlledFen = null,
@@ -79,24 +216,27 @@ export function ChessBoard({
   onMove,
   onCancelPremove,
   onQueuePremove,
-}: ChessBoardProps): ReactElement {
+  board,
+  ui,
+}: ChessBoardViewProps): ReactElement {
   void gameId;
-  const gameState = useGameStore((s) => s.gameState);
-  const selectedSquare = useGameStore((s) => s.selectedSquare);
-  const legalMoves = useGameStore((s) => s.legalMoves);
-  const setSelectedSquare = useGameStore((s) => s.setSelectedSquare);
-  const setLegalMoves = useGameStore((s) => s.setLegalMoves);
-  const premove = useGameStore((s) => s.premove);
-  const myColor = useGameStore((s) => s.myColor);
-  const isMyTurn = useGameStore((s) => s.isMyTurn);
-  const moveError = useGameStore((s) => s.moveError);
-  const optimisticFen = useGameStore((s) => s.optimisticFen);
-  const optimisticLastMove = useGameStore((s) => s.optimisticLastMove);
-  const rejectedMove = useGameStore((s) => s.rejectedMove);
-  const soundEnabled = useUiStore((s) => s.soundEnabled);
-  const pieceTheme = useUiStore((s) => s.pieceTheme);
-  const showLegalMoves = useUiStore((s) => s.showLegalMoves);
-  const pieceAnimationsEnabled = useUiStore((s) => s.pieceAnimationsEnabled);
+  const {
+    gameFen,
+    gameLastMove,
+    gameStatus,
+    selectedSquare,
+    legalMoves,
+    premove,
+    myColor,
+    isMyTurn,
+    moveError,
+    optimisticFen,
+    optimisticLastMove,
+    rejectedMove,
+    setSelectedSquare,
+    setLegalMoves,
+  } = board;
+  const { soundEnabled, pieceTheme, showLegalMoves, pieceAnimationsEnabled } = ui;
 
   const [manualFlip, setManualFlip] = useState(false);
   const [promotion, setPromotion] = useState<{
@@ -112,7 +252,7 @@ export function ChessBoard({
   const fen =
     (controlledFen && controlledFen.length > 0 ? controlledFen : null) ??
     optimisticFen ??
-    gameState?.fen ??
+    gameFen ??
     START_FEN;
   const chess = useMemo(() => buildChess(fen), [fen]);
 
@@ -121,14 +261,14 @@ export function ChessBoard({
   const ranks = displayRanks(viewFlipped);
   const files = displayFiles(viewFlipped);
 
-  const lastMove = optimisticLastMove ?? gameState?.lastMove ?? null;
+  const lastMove = optimisticLastMove ?? gameLastMove ?? null;
 
   useEffect(() => {
     if (optimisticFen) {
       prevFenRef.current = fen;
       return;
     }
-    if (!gameState?.lastMove) {
+    if (!gameLastMove) {
       prevFenRef.current = fen;
       return;
     }
@@ -139,9 +279,9 @@ export function ChessBoard({
     }
     const probe = buildChess(prev);
     const m = probe.move({
-      from: gameState.lastMove.from as JsSquare,
-      to: gameState.lastMove.to as JsSquare,
-      promotion: gameState.lastMove.promotion,
+      from: gameLastMove.from as JsSquare,
+      to: gameLastMove.to as JsSquare,
+      promotion: gameLastMove.promotion,
     });
     if (m) {
       if (probe.in_check()) {
@@ -151,13 +291,13 @@ export function ChessBoard({
       }
     }
     prevFenRef.current = fen;
-  }, [fen, gameState?.lastMove, gameState, soundEnabled, optimisticFen]);
+  }, [fen, gameLastMove, soundEnabled, optimisticFen]);
 
   useEffect(() => {
-    if (gameState?.status === "completed" || gameState?.status === "abandoned") {
+    if (gameStatus === "completed" || gameStatus === "abandoned") {
       void playChessSound("gameEnd", soundEnabled);
     }
-  }, [gameState?.status, soundEnabled]);
+  }, [gameStatus, soundEnabled]);
 
   const inCheck = chess.in_check();
   const inCheckmate = chess.in_checkmate();
@@ -325,6 +465,47 @@ export function ChessBoard({
     [interactive, isMyTurn, myColor, onQueuePremove, submitMove],
   );
 
+  const onDragStart = useCallback(
+    (e: DragStartEvent): void => {
+      if (!interactive) {
+        return;
+      }
+      const payload = e.active.data.current as { square: Square; type: PieceType; color: PieceColor } | null;
+      setDragPiece(payload);
+      if (payload) {
+        const label = formatPieceFrenchLabel(payload.type, payload.color);
+        setDragAnnounce(`${label} sélectionné, case ${payload.square}. Glisser pour déplacer.`);
+      }
+    },
+    [interactive],
+  );
+
+  const onDragCancel = useCallback((): void => {
+    setDragPiece(null);
+    if (interactive) {
+      setDragAnnounce("Coup annulé.");
+    }
+  }, [interactive]);
+
+  const toggleManualFlip = useCallback((): void => {
+    setManualFlip((v) => !v);
+  }, []);
+
+  const onPromotionPick = useCallback(
+    (p: NonNullable<MoveInput["promotion"]>): void => {
+      if (!promotion) {
+        return;
+      }
+      submitMove(promotion.from, promotion.to, p, promotion.mode);
+      setPromotion(null);
+    },
+    [promotion, submitMove],
+  );
+
+  const onPromotionCancel = useCallback((): void => {
+    setPromotion(null);
+  }, []);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, {
@@ -351,27 +532,7 @@ export function ChessBoard({
   }, [onCancelPremove]);
 
   return (
-    <DndContext
-      sensors={sensors}
-      onDragStart={(e) => {
-        if (!interactive) {
-          return;
-        }
-        const payload = e.active.data.current as { square: Square; type: PieceType; color: PieceColor } | null;
-        setDragPiece(payload);
-        if (payload) {
-          const label = formatPieceFrenchLabel(payload.type, payload.color);
-          setDragAnnounce(`${label} sélectionné, case ${payload.square}. Glisser pour déplacer.`);
-        }
-      }}
-      onDragCancel={() => {
-        setDragPiece(null);
-        if (interactive) {
-          setDragAnnounce("Coup annulé.");
-        }
-      }}
-      onDragEnd={onDragEnd}
-    >
+    <DndContext sensors={sensors} onDragStart={onDragStart} onDragCancel={onDragCancel} onDragEnd={onDragEnd}>
       <div className="w-full">
         <div aria-live="polite" className="sr-only">
           {dragAnnounce}
@@ -380,7 +541,7 @@ export function ChessBoard({
           <div className="mb-2 flex justify-end">
             <button
               type="button"
-              onClick={() => setManualFlip((v) => !v)}
+              onClick={toggleManualFlip}
               className="rounded-md border border-royal-surface-elevated bg-royal-surface px-3 py-1.5 text-xs text-royal-muted transition hover:border-royal-gold hover:text-royal-gold"
             >
               Retourner l&apos;échiquier
@@ -486,15 +647,17 @@ export function ChessBoard({
       <PromotionModal
         open={!!promotion}
         color={promotion?.color ?? "w"}
-        onPick={(p) => {
-          if (!promotion) {
-            return;
-          }
-          submitMove(promotion.from, promotion.to, p, promotion.mode);
-          setPromotion(null);
-        }}
-        onCancel={() => setPromotion(null)}
+        onPick={onPromotionPick}
+        onCancel={onPromotionCancel}
       />
     </DndContext>
   );
+}, chessBoardViewPropsEqual);
+
+export function ChessBoard(props: ChessBoardProps): ReactElement {
+  const board = useGameStore(useShallow(selectBoardGameSlice));
+  const ui = useUiStore(useShallow(selectBoardUiSlice));
+  return <ChessBoardView {...props} board={board} ui={ui} />;
 }
+
+export type { ChessBoardProps } from "@/components/board/chess-board.types";
