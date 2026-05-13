@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "TimeControl" ADD VALUE 'CORRESPONDENCE';

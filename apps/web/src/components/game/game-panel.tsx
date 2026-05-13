@@ -1,0 +1,212 @@
+"use client";
+
+import type { PieceColor } from "@royalchess/shared";
+import { Volume2, VolumeX } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { GameChat } from "@/components/game/game-chat";
+import { MoveHistory } from "@/components/game/move-history";
+import { PlayerCard } from "@/components/game/player-card";
+import { materialDelta } from "@/lib/material-score";
+import { useUiStore } from "@/stores/ui.store";
+import { useGameStore } from "@/stores/game.store";
+
+export interface GamePanelProps {
+  readonly gameId: string;
+  readonly sendChatMessage: (content: string) => void;
+  readonly resign: () => void;
+  readonly offerDraw: () => void;
+  readonly acceptDraw: () => void;
+  readonly declineDraw: () => void;
+  readonly compactMovesOnly?: boolean;
+  readonly compactChatOnly?: boolean;
+  readonly compactInfoOnly?: boolean;
+}
+
+function useLiveClock(
+  whiteMs: number,
+  blackMs: number,
+  turn: PieceColor,
+  status: string | undefined,
+  tickKey: number,
+): { white: number; black: number } {
+  const [w, setW] = useState(whiteMs);
+  const [b, setB] = useState(blackMs);
+
+  useEffect(() => {
+    setW(whiteMs);
+    setB(blackMs);
+  }, [whiteMs, blackMs, tickKey]);
+
+  useEffect(() => {
+    if (status !== "active") {
+      return;
+    }
+    const id = window.setInterval(() => {
+      if (turn === "w") {
+        setW((x) => Math.max(0, x - 1000));
+      } else {
+        setB((x) => Math.max(0, x - 1000));
+      }
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [turn, status]);
+
+  return { white: w, black: b };
+}
+
+export function GamePanel({
+  gameId,
+  sendChatMessage,
+  resign,
+  offerDraw,
+  acceptDraw,
+  declineDraw,
+  compactMovesOnly,
+  compactChatOnly,
+  compactInfoOnly,
+}: GamePanelProps): React.ReactElement {
+  void gameId;
+  const gameState = useGameStore((s) => s.gameState);
+  const drawOfferedBy = useGameStore((s) => s.drawOfferedBy);
+  const myColor = useGameStore((s) => s.myColor);
+  const soundEnabled = useUiStore((s) => s.soundEnabled);
+  const toggleSound = useUiStore((s) => s.toggleSound);
+
+  const tickKey = gameState?.moveCount ?? 0;
+  const clocks = useLiveClock(
+    gameState?.whiteTimeRemaining ?? 0,
+    gameState?.blackTimeRemaining ?? 0,
+    gameState?.turn ?? "w",
+    gameState?.status,
+    tickKey,
+  );
+
+  if (!gameState) {
+    return <div className="rounded-xl border border-royal-surface-elevated bg-royal-surface p-4 text-sm text-royal-muted">Chargement…</div>;
+  }
+
+  const fen = gameState.fen;
+  const delta = materialDelta(fen);
+  const whiteAdv = delta > 0 ? delta : 0;
+  const blackAdv = delta < 0 ? -delta : 0;
+
+  const movesBlock = (
+    <div className="space-y-2">
+      <h3 className="font-display text-sm font-semibold text-royal-gold">Historique</h3>
+      <MoveHistory pgn={gameState.pgn} />
+    </div>
+  );
+
+  const chatBlock = (
+    <div className="space-y-2">
+      <h3 className="font-display text-sm font-semibold text-royal-gold">Chat</h3>
+      <GameChat sendChatMessage={sendChatMessage} />
+    </div>
+  );
+
+  // États possibles de l'offre de nulle pour l'utilisateur courant :
+  //  - aucune offre        → bouton "Proposer nulle"
+  //  - j'ai proposé        → indicateur "Offre envoyée" + bouton désactivé
+  //  - mon adversaire a proposé → boutons "Accepter / Refuser"
+  const drawIOffered = drawOfferedBy !== null && myColor !== null && drawOfferedBy === myColor;
+  const drawOpponentOffered = drawOfferedBy !== null && myColor !== null && drawOfferedBy !== myColor;
+  const gameIsActive = gameState.status === "active";
+
+  const actionsBlock = (
+    <div className="flex flex-wrap gap-2">
+      {drawOpponentOffered ? (
+        <>
+          <Button type="button" size="sm" variant="royal" onClick={acceptDraw}>
+            Accepter nulle
+          </Button>
+          <Button type="button" size="sm" variant="secondary" onClick={declineDraw}>
+            Refuser nulle
+          </Button>
+        </>
+      ) : (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={offerDraw}
+          disabled={!gameIsActive || drawIOffered}
+          aria-label={drawIOffered ? "Offre de nulle envoyée, en attente de l'adversaire" : "Proposer nulle"}
+        >
+          {drawIOffered ? "Nulle proposée…" : "Proposer nulle"}
+        </Button>
+      )}
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button type="button" size="sm" variant="destructive" disabled={!gameIsActive}>
+            Abandonner
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Abandonner la partie ?</AlertDialogTitle>
+            <AlertDialogDescription>Cette action est définitive.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={resign}>Confirmer</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <Button type="button" size="sm" variant="ghost" onClick={toggleSound} aria-label="Son">
+        {soundEnabled ? <Volume2 className="size-4" /> : <VolumeX className="size-4 text-royal-muted" />}
+      </Button>
+    </div>
+  );
+
+  const infoBlock = (
+    <div className="space-y-3">
+      <PlayerCard
+        align="top"
+        username={gameState.blackPlayer.username}
+        avatarUrl={gameState.blackPlayer.avatarUrl}
+        clockMs={clocks.black}
+        isActiveClock={gameState.status === "active" && gameState.turn === "b"}
+        materialAdvantage={blackAdv}
+      />
+      <PlayerCard
+        align="bottom"
+        username={gameState.whitePlayer.username}
+        avatarUrl={gameState.whitePlayer.avatarUrl}
+        clockMs={clocks.white}
+        isActiveClock={gameState.status === "active" && gameState.turn === "w"}
+        materialAdvantage={whiteAdv}
+      />
+      {actionsBlock}
+    </div>
+  );
+
+  if (compactMovesOnly) {
+    return <div className="rounded-xl border border-royal-surface-elevated bg-royal-surface p-3">{movesBlock}</div>;
+  }
+  if (compactChatOnly) {
+    return <div className="rounded-xl border border-royal-surface-elevated bg-royal-surface p-3">{chatBlock}</div>;
+  }
+  if (compactInfoOnly) {
+    return <div className="rounded-xl border border-royal-surface-elevated bg-royal-surface p-3">{infoBlock}</div>;
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-4 rounded-xl border border-royal-surface-elevated bg-royal-surface p-4 shadow-lg">
+      {infoBlock}
+      {movesBlock}
+      {chatBlock}
+    </div>
+  );
+}

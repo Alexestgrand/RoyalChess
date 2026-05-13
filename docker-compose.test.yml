@@ -1,0 +1,27 @@
+# Stack de test : PostgreSQL + Redis pour Jest d'intégration (ports locaux 5433 / 6380).
+services:
+  postgres_test:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: royal
+      POSTGRES_PASSWORD: royal
+      POSTGRES_DB: royal_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U royal -d royal_test"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  redis_test:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 10

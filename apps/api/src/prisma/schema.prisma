@@ -1,0 +1,117 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  BANNED
+}
+
+enum TimeControl {
+  BULLET
+  BLITZ
+  RAPID
+  CLASSICAL
+  CORRESPONDENCE
+}
+
+enum OAuthProvider {
+  GOOGLE
+  GITHUB
+}
+
+enum GameStatus {
+  WAITING
+  ACTIVE
+  COMPLETED
+  ABANDONED
+  DRAW
+}
+
+enum GameWinner {
+  WHITE
+  BLACK
+  DRAW
+}
+
+model User {
+  id            String          @id @default(cuid())
+  email         String          @unique
+  username      String          @unique @db.VarChar(20)
+  passwordHash  String?
+  avatarUrl     String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  isActive      Boolean         @default(true)
+  role          UserRole        @default(USER)
+  eloRatings    EloRating[]
+  oauthAccounts OAuthAccount[]
+  refreshTokens RefreshToken[]
+  gamesAsWhite  Game[]          @relation("WhitePlayer")
+  gamesAsBlack  Game[]          @relation("BlackPlayer")
+}
+
+model EloRating {
+  id                String      @id @default(cuid())
+  userId            String
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  timeControl       TimeControl
+  rating            Int         @default(1200)
+  ratingDeviation   Int         @default(350)
+  volatility        Float       @default(0.06)
+  gamesPlayed       Int         @default(0)
+  updatedAt         DateTime    @updatedAt
+
+  @@unique([userId, timeControl])
+}
+
+model OAuthAccount {
+  id                 String         @id @default(cuid())
+  userId             String
+  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider           OAuthProvider
+  providerAccountId  String
+  accessToken        String?
+  refreshToken       String?
+  expiresAt          DateTime?
+
+  @@unique([provider, providerAccountId])
+}
+
+model RefreshToken {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jti        String   @unique
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  isRevoked  Boolean  @default(false)
+  userAgent  String?
+  ipAddress  String?
+}
+
+model Game {
+  id             String       @id @default(cuid())
+  whitePlayerId  String
+  blackPlayerId  String?
+  whitePlayer    User         @relation("WhitePlayer", fields: [whitePlayerId], references: [id])
+  blackPlayer    User?        @relation("BlackPlayer", fields: [blackPlayerId], references: [id])
+  inviteCode     String?      @unique
+  status         GameStatus   @default(WAITING)
+  winner         GameWinner?
+  timeControl    TimeControl  @default(RAPID)
+  initialTime    Int
+  increment      Int          @default(0)
+  pgn            String       @default("")
+  fen            String?
+  startedAt      DateTime?
+  endedAt        DateTime?
+  createdAt      DateTime     @default(now())
+}
